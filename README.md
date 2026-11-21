@@ -2,7 +2,7 @@
 
 A falling-sand sandbox for Android and desktop, made in Unity. Pour sand, water, lava and more onto the screen and watch them fall, flow, burn, melt and explode into each other.
 
-- **Version:** 1.3 (build 4). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
+- **Version:** 1.4 (build 5). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
 - **Android id:** `com.Tony3974.PowderMan`, released on the F-Droid repo at fdroid.tonycad.com.
 - **Unity:** 6000.0.85f1, built-in render pipeline, no extra packages.
 
@@ -68,6 +68,38 @@ Pens spray powders, liquids and gases as separate grains rather than solid blobs
 | Smoke | gas | Rises and fades. |
 | Cloner | solid | Copies the first thing that touches it, forever. |
 | Void | solid | Deletes anything that touches it. |
+| Dirt | powder | Water turns it into Mud. Seeds sprout on it. |
+| Mud | powder | Heavy and slow. Heat dries it back into Dirt. Lets off a little Methane. |
+| Clay | solid | Fire or Lava bakes it into Brick. Water slowly softens it into Mud. |
+| Brick | solid | Baked Clay. Mostly holds up to Acid. |
+| Salt | powder | Melts Ice and Snow. Dissolves in Water into Salt Water. |
+| Salt Water | liquid | Heavier than Water, doesn't freeze, leaves Salt when it boils, rusts Metal faster. |
+| Ash | powder | Left by burnt Wood and Plant. Floats on Water. |
+| Obsidian | solid | Lava touching Ice. Acid-proof. |
+| Metal | solid | Lava melts it into Molten Metal. Water rusts it. Acid on it gives off Hydrogen. |
+| Molten Metal | liquid | Hot, lights things, cools back into Metal. |
+| Rust | powder | Wet Metal crumbles into it. |
+| Coal | powder | Hard to light, then burns for a long time and leaves Ash. |
+| Thermite | powder | Burns white-hot and melts through Metal, Stone, Brick and Glass. Water doesn't stop it. |
+| Molten Glass | liquid | Lava melts Glass into it. Sets back into Glass. |
+| Seed | powder | Sprouts into a growing Plant on Mud (fast) or Dirt (slow). |
+| Vine | solid | Grows down from wherever you put it, up to 40 cells. Burns fast. |
+| Moss | solid | Creeps over Stone. Water slowly grows it on Stone. |
+| Fungus | solid | Eats Wood and Plant. Lets off Methane. |
+| Ant | creature | Walks, climbs walls and digs through soft ground. Eats Seeds and breeds on Plants. Drowns and burns. |
+| Worm | creature | Wriggles through Dirt, Mud and Sand. Turns Ash into Dirt. |
+| Cloud | gas | Hangs at the top for a couple of minutes, raining. Gathers Steam. |
+| Lightning | bolt | Zig-zags down, lights what it hits, fuses Sand into Glass. |
+| Methane | gas | Rises. Explodes when lit. |
+| Hydrogen | gas | Very light. Goes pop when lit. |
+| Poison Gas | gas | Kills Plants, Seeds, Vines, Moss, Ants and Worms. Water soaks it up. |
+| Bubble | gas | Rises through liquids and pops at the surface. |
+| Nitro | liquid | Explodes when lit, or when it lands after falling more than 12 cells. |
+| Sponge | solid | Soaks up Water. Heat dries it out. |
+| Bouncy Ball | powder | Bounces when it lands, lower each time. |
+| Antimatter | powder | Wipes out whatever it touches, and itself. Only indestructible things can hold it. |
+| Black Hole | solid | Pulls in everything within 14 cells and deletes it. |
+| Portal In / Out | solid | Anything touching an In portal comes out of an Out portal. |
 
 ## Changing the game
 
@@ -100,7 +132,7 @@ The main `Element` settings:
 | `Heat` | Sets fire to neighbours. Chance per tick = Heat × their Flammability |
 | `Flammability`, `BurnsInto` | How easily it catches, and what it becomes |
 | `ExplodeRadius` | Explodes instead of burning |
-| `LifeMin`, `LifeMax`, `DecaysInto`, `DecayChance` | Disappears after a while (Fire, Smoke, Steam, Ember) |
+| `LifeMin`, `LifeMax`, `DecaysInto`, `DecayChance`, `DecaysElse` | Disappears after a while (Fire, Smoke, Steam, Ember). Life is at most 255 ticks: set `DecaysElse` to the element itself to make it last longer (Cloud, Molten Metal) |
 | `Emits`, `EmitChance` | Spawns something into empty neighbours (Ember throws off Fire) |
 | `Flicker` | Re-rolls its shade every tick |
 | `Indestructible` | Explosions, Acid and Void can't touch it |
@@ -108,7 +140,7 @@ The main `Element` settings:
 
 Other files:
 
-- **`Assets/Scripts/Simulation.cs`**: the grid and the rules for movement, burning, explosions, reactions, the Cloner, and save/load.
+- **`Assets/Scripts/Simulation.cs`**: the grid and the rules for movement, burning, explosions, reactions, save/load, and the elements that need their own code (Cloner, Bouncy Ball, Nitro, Bubble, Lightning, Black Hole, Portals, Ant, Worm, Vine and sprouting Seeds, in `UpdateSpecial`).
 - **`Assets/Scripts/PowderGame.cs`**: rendering, input (touch, mouse, keys), the side strip, the element picker, the home menu and its demo. Grid height (180), tick rate, brush limits and spray density are in the Inspector on the `Powder Game` object. Turn off **Fit Width To Screen** there to use a fixed **Grid Width** instead.
 - **`Assets/Scripts/BuildInfo.cs`**: the version.
 - **`Assets/Editor/AndroidBuild.cs`**: the APK build and icon setup.

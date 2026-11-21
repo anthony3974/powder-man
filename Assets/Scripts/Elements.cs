@@ -38,6 +38,54 @@ namespace PowderMan
         public const byte Void = 19;
         public const byte Ember = 20;
 
+        // Earth
+        public const byte Dirt = 21;
+        public const byte Mud = 22;
+        public const byte Clay = 23;
+        public const byte Brick = 24;
+        public const byte Salt = 25;
+        public const byte SaltWater = 26;
+        public const byte Ash = 27;
+        public const byte Obsidian = 28;
+
+        // Metals and heat
+        public const byte Metal = 29;
+        public const byte MoltenMetal = 30;
+        public const byte Rust = 31;
+        public const byte Coal = 32;
+        public const byte BurningCoal = 33;
+        public const byte Thermite = 34;
+        public const byte BurningThermite = 35;
+        public const byte MoltenGlass = 36;
+
+        // Living things
+        public const byte Seed = 37;
+        public const byte Bud = 38;
+        public const byte Vine = 39;
+        public const byte Moss = 40;
+        public const byte Fungus = 41;
+        public const byte Ant = 42;
+        public const byte Worm = 43;
+
+        // Gases and weather
+        public const byte Cloud = 44;
+        public const byte Lightning = 45;
+        public const byte Spark = 46;
+        public const byte Methane = 47;
+        public const byte Hydrogen = 48;
+        public const byte PoisonGas = 49;
+        public const byte Bubble = 50;
+
+        // Odd and fun
+        public const byte Nitro = 51;
+        public const byte Sponge = 52;
+        public const byte WetSponge = 53;
+        public const byte Ball = 54;
+        public const byte Antimatter = 55;
+        public const byte BlackHole = 56;
+        public const byte PortalIn = 57;
+        public const byte PortalOut = 58;
+
         /// <summary>Wildcard for reactions: matches any element except Empty, itself and Indestructible ones.</summary>
         public const byte Any = 255;
     }
@@ -85,9 +133,14 @@ namespace PowderMan
 
         /// <summary>If LifeMax is above 0, the cell disappears after LifeMin..LifeMax ticks (max 255).</summary>
         public int LifeMin, LifeMax;
-        /// <summary>When its life runs out it becomes this (with DecayChance), otherwise Empty.</summary>
+        /// <summary>When its life runs out it becomes DecaysInto (with DecayChance), otherwise DecaysElse.</summary>
         public byte DecaysInto = El.Empty;
         public float DecayChance = 1f;
+        /// <summary>
+        /// What it becomes when DecayChance fails. Set it to the element itself to make something that lasts
+        /// longer than 255 ticks: it starts a fresh life each time until DecayChance comes up.
+        /// </summary>
+        public byte DecaysElse = El.Empty;
 
         /// <summary>Re-pick the shade every tick (fire).</summary>
         public bool Flicker;
@@ -128,7 +181,8 @@ namespace PowderMan
             Add(El.Ember, new Element
             {
                 Name = "Ember", Kind = Kind.Solid, Color = Hex("#ff8a2a"), Color2 = Hex("#a8240c"), Heat = 0.2f, Flicker = true,
-                LifeMin = 60, LifeMax = 180, DecaysInto = El.Smoke, DecayChance = 0.3f, Emits = El.Fire, EmitChance = 0.15f,
+                LifeMin = 60, LifeMax = 180, DecaysInto = El.Ash, DecayChance = 0.4f, DecaysElse = El.Smoke,
+                Emits = El.Fire, EmitChance = 0.15f,
             });
             Add(El.Oil, new Element { Name = "Oil", Kind = Kind.Liquid, Color = Hex("#4a3a2a"), Color2 = Hex("#3b2e21"), Density = 8, Spread = 3, Flammability = 0.4f });
             Add(El.Lava, new Element
@@ -156,6 +210,101 @@ namespace PowderMan
             // Cloner: grabs the first thing that touches it and keeps spawning copies of it.
             Add(El.Cloner, new Element { Name = "Cloner", Kind = Kind.Solid, Color = Hex("#d4a72c"), Color2 = Hex("#b88d1c"), Indestructible = true });
             Add(El.Void, new Element { Name = "Void", Kind = Kind.Solid, Color = Hex("#2a0f3d"), Color2 = Hex("#1c0829"), Indestructible = true });
+
+            // ---- Earth
+            Add(El.Dirt, new Element { Name = "Dirt", Kind = Kind.Powder, Color = Hex("#7a5534"), Color2 = Hex("#5e4027"), Density = 15, Scatter = 0.08f });
+            Add(El.Mud, new Element
+            {
+                Name = "Mud", Kind = Kind.Powder, Color = Hex("#4f3a26"), Color2 = Hex("#3d2c1c"), Density = 17, MoveChance = 0.4f,
+                Scatter = 0.03f, Emits = El.Methane, EmitChance = 0.0002f,
+            });
+            Add(El.Clay, new Element { Name = "Clay", Kind = Kind.Solid, Color = Hex("#b87d5b"), Color2 = Hex("#a06a4a") });
+            Add(El.Brick, new Element { Name = "Brick", Kind = Kind.Solid, Color = Hex("#a8432f"), Color2 = Hex("#8a3424") });
+            Add(El.Salt, new Element { Name = "Salt", Kind = Kind.Powder, Color = Hex("#f2f0ea"), Color2 = Hex("#d8d4cb"), Density = 17 });
+            Add(El.SaltWater, new Element { Name = "Salt Water", Kind = Kind.Liquid, Color = Hex("#3a9cc4"), Color2 = Hex("#318aad"), Density = 11, Spread = 5 });
+            Add(El.Ash, new Element { Name = "Ash", Kind = Kind.Powder, Color = Hex("#9a9a9e"), Color2 = Hex("#7c7c82"), Density = 5, Scatter = 0.4f });
+            Add(El.Obsidian, new Element { Name = "Obsidian", Kind = Kind.Solid, Color = Hex("#2b2238"), Color2 = Hex("#1a1424") });
+
+            // ---- Metals and heat
+            Add(El.Metal, new Element { Name = "Metal", Kind = Kind.Solid, Color = Hex("#a9b3c2"), Color2 = Hex("#8a94a3") });
+            Add(El.MoltenMetal, new Element
+            {
+                Name = "Molten Metal", Kind = Kind.Liquid, Color = Hex("#ffe08a"), Color2 = Hex("#ff9a3c"), Density = 20, Spread = 2,
+                MoveChance = 0.5f, Heat = 0.6f, Flicker = true,
+                LifeMin = 200, LifeMax = 255, DecaysInto = El.Metal, DecayChance = 0.3f, DecaysElse = El.MoltenMetal,
+            });
+            Add(El.Rust, new Element { Name = "Rust", Kind = Kind.Powder, Color = Hex("#a5532a"), Color2 = Hex("#7d3d1d"), Density = 14 });
+            Add(El.Coal, new Element { Name = "Coal", Kind = Kind.Powder, Color = Hex("#2a2a2e"), Color2 = Hex("#1a1a1d"), Density = 14, Flammability = 0.04f, BurnsInto = El.BurningCoal });
+            Add(El.BurningCoal, new Element
+            {
+                Name = "Burning Coal", Kind = Kind.Powder, Color = Hex("#ff7a2a"), Color2 = Hex("#7a1e0c"), Density = 14, Heat = 0.4f,
+                Flicker = true, Emits = El.Fire, EmitChance = 0.05f, HiddenFromToolbar = true,
+                LifeMin = 200, LifeMax = 255, DecaysInto = El.Ash, DecayChance = 0.15f, DecaysElse = El.BurningCoal,
+            });
+            Add(El.Thermite, new Element { Name = "Thermite", Kind = Kind.Powder, Color = Hex("#8c6f6a"), Color2 = Hex("#6e5450"), Density = 18, Flammability = 0.15f, BurnsInto = El.BurningThermite });
+            Add(El.BurningThermite, new Element
+            {
+                Name = "Burning Thermite", Kind = Kind.Powder, Color = Hex("#ffffff"), Color2 = Hex("#ffb347"), Density = 18, Heat = 1f,
+                Flicker = true, Emits = El.Fire, EmitChance = 0.2f, HiddenFromToolbar = true,
+                LifeMin = 80, LifeMax = 160, DecaysInto = El.MoltenMetal, DecayChance = 0.4f,
+            });
+            Add(El.MoltenGlass, new Element
+            {
+                Name = "Molten Glass", Kind = Kind.Liquid, Color = Hex("#ffcf8a"), Color2 = Hex("#f29b4c"), Density = 15, Spread = 1,
+                MoveChance = 0.3f, Heat = 0.3f, Flicker = true,
+                LifeMin = 200, LifeMax = 255, DecaysInto = El.Glass, DecayChance = 0.35f, DecaysElse = El.MoltenGlass,
+            });
+
+            // ---- Living things
+            Add(El.Seed, new Element { Name = "Seed", Kind = Kind.Powder, Color = Hex("#c9a25a"), Color2 = Hex("#9c7a3c"), Density = 12, Flammability = 0.2f });
+            // Bud: the growing tip of a sprouted seed. Climbs upward leaving Plant behind, then turns into Plant.
+            Add(El.Bud, new Element
+            {
+                Name = "Bud", Kind = Kind.Solid, Color = Hex("#9df07a"), Color2 = Hex("#7ad65a"), Flammability = 0.12f, BurnsInto = El.Ember,
+                LifeMin = 60, LifeMax = 200, DecaysInto = El.Plant, HiddenFromToolbar = true,
+            });
+            Add(El.Vine, new Element { Name = "Vine", Kind = Kind.Solid, Color = Hex("#2f7d32"), Color2 = Hex("#225c25"), Flammability = 0.35f });
+            Add(El.Moss, new Element { Name = "Moss", Kind = Kind.Solid, Color = Hex("#5f8f3a"), Color2 = Hex("#4a7230"), Flammability = 0.1f });
+            Add(El.Fungus, new Element
+            {
+                Name = "Fungus", Kind = Kind.Solid, Color = Hex("#c7b6d9"), Color2 = Hex("#a28fb8"), Flammability = 0.1f,
+                Emits = El.Methane, EmitChance = 0.0005f,
+            });
+            Add(El.Ant, new Element { Name = "Ant", Kind = Kind.Powder, Color = Hex("#3a1f14"), Color2 = Hex("#1f100a"), Density = 12, Flammability = 0.5f });
+            Add(El.Worm, new Element { Name = "Worm", Kind = Kind.Powder, Color = Hex("#e08a9a"), Color2 = Hex("#c46f80"), Density = 12, Flammability = 0.3f });
+
+            // ---- Gases and weather
+            // Cloud: lasts a couple of minutes (a fresh life each time DecayChance fails) and rains as it goes.
+            Add(El.Cloud, new Element
+            {
+                Name = "Cloud", Kind = Kind.Gas, Color = Hex("#e3e8ef"), Color2 = Hex("#c4ccd8"), Density = 1, Spread = 1, MoveChance = 0.08f,
+                Emits = El.Water, EmitChance = 0.002f,
+                LifeMin = 200, LifeMax = 255, DecaysInto = El.Empty, DecayChance = 0.03f, DecaysElse = El.Cloud,
+            });
+            Add(El.Lightning, new Element { Name = "Lightning", Kind = Kind.Gas, Color = Hex("#fffbe0"), Color2 = Hex("#d9e8ff"), Flicker = true });
+            Add(El.Spark, new Element
+            {
+                Name = "Spark", Kind = Kind.Solid, Color = Hex("#ffffff"), Color2 = Hex("#bcd4ff"), Heat = 1f, Flicker = true,
+                LifeMin = 2, LifeMax = 6, HiddenFromToolbar = true,
+            });
+            Add(El.Methane, new Element { Name = "Methane", Kind = Kind.Gas, Color = Hex("#3b4a3a"), Color2 = Hex("#2f3b2e"), Density = 1, Spread = 3, Flammability = 0.6f, ExplodeRadius = 2 });
+            Add(El.Hydrogen, new Element { Name = "Hydrogen", Kind = Kind.Gas, Color = Hex("#2f3a52"), Color2 = Hex("#273047"), Density = 0, Spread = 6, Flammability = 1f, ExplodeRadius = 2 });
+            Add(El.PoisonGas, new Element
+            {
+                Name = "Poison Gas", Kind = Kind.Gas, Color = Hex("#8fbf2a"), Color2 = Hex("#6e9a1c"), Density = 3, Spread = 3,
+                LifeMin = 200, LifeMax = 255, DecaysInto = El.Empty, DecayChance = 0.3f, DecaysElse = El.PoisonGas,
+            });
+            Add(El.Bubble, new Element { Name = "Bubble", Kind = Kind.Gas, Color = Hex("#cfefff"), Color2 = Hex("#a9dcf5"), Density = 1, Spread = 1, LifeMin = 120, LifeMax = 255 });
+
+            // ---- Odd and fun
+            Add(El.Nitro, new Element { Name = "Nitro", Kind = Kind.Liquid, Color = Hex("#e9f27a"), Color2 = Hex("#cfd95e"), Density = 9, Spread = 3, Flammability = 0.9f, ExplodeRadius = 6 });
+            Add(El.Sponge, new Element { Name = "Sponge", Kind = Kind.Solid, Color = Hex("#f2d64b"), Color2 = Hex("#d9bc33"), Flammability = 0.05f });
+            Add(El.WetSponge, new Element { Name = "Wet Sponge", Kind = Kind.Solid, Color = Hex("#b5a23a"), Color2 = Hex("#978628"), HiddenFromToolbar = true });
+            Add(El.Ball, new Element { Name = "Bouncy Ball", Kind = Kind.Powder, Color = Hex("#ff4f8b"), Color2 = Hex("#e0306d"), Density = 14, Scatter = 0f });
+            Add(El.Antimatter, new Element { Name = "Antimatter", Kind = Kind.Powder, Color = Hex("#e6b3ff"), Color2 = Hex("#a64dff"), Density = 10, Flicker = true });
+            Add(El.BlackHole, new Element { Name = "Black Hole", Kind = Kind.Solid, Color = Hex("#000000"), Color2 = Hex("#1a0d24"), Indestructible = true });
+            Add(El.PortalIn, new Element { Name = "Portal In", Kind = Kind.Solid, Color = Hex("#2f8cff"), Color2 = Hex("#1a5fd1"), Flicker = true, Indestructible = true });
+            Add(El.PortalOut, new Element { Name = "Portal Out", Kind = Kind.Solid, Color = Hex("#ff8c1a"), Color2 = Hex("#d1600a"), Flicker = true, Indestructible = true });
         }
 
         static void DefineReactions()
@@ -181,12 +330,91 @@ namespace PowderMan
 
             React(El.Plant, El.Water, El.Plant, El.Plant, 0.03f); // plants drink water and grow
 
+            // ---- Earth
+            React(El.Water, El.Dirt, El.Empty, El.Mud, 0.05f);    // dirt soaks up water
+            React(El.Fire, El.Mud, El.Fire, El.Dirt, 0.1f);       // heat dries mud
+            React(El.Lava, El.Mud, El.Lava, El.Dirt, 0.2f);
+            React(El.Ember, El.Mud, El.Ember, El.Dirt, 0.05f);
+            React(El.Fire, El.Clay, El.Fire, El.Brick, 0.05f);    // fire bakes clay
+            React(El.Lava, El.Clay, El.Lava, El.Brick, 0.1f);
+            React(El.Ember, El.Clay, El.Ember, El.Brick, 0.03f);
+            React(El.Water, El.Clay, El.Water, El.Mud, 0.001f);   // and water slowly softens it
+            React(El.Salt, El.Ice, El.Salt, El.Water, 0.02f);     // salt melts ice and snow
+            React(El.Salt, El.Snow, El.Salt, El.Water, 0.05f);
+            React(El.Salt, El.Water, El.Empty, El.SaltWater, 0.05f);
+            React(El.Fire, El.SaltWater, El.Empty, El.SaltWater, 0.5f);
+            React(El.Fire, El.SaltWater, El.Empty, El.Salt, 0.1f);       // boils away, leaving salt
+            React(El.Ember, El.SaltWater, El.Wood, El.Salt, 0.3f);
+            React(El.Lava, El.SaltWater, El.Stone, El.Salt, 0.5f);
+            React(El.Ice, El.SaltWater, El.Water, El.SaltWater, 0.01f);  // salt water melts ice instead of freezing
+            React(El.Lava, El.Ice, El.Obsidian, El.Water, 0.1f);         // lava cooled by ice sets as obsidian
+            React(El.Plant, El.Mud, El.Bud, El.Dirt, 0.003f);            // plants on wet soil keep sprouting
+
+            // ---- Metals and heat
+            React(El.Lava, El.Metal, El.Lava, El.MoltenMetal, 0.005f);
+            React(El.MoltenMetal, El.Water, El.Metal, El.Steam, 0.5f);
+            React(El.MoltenMetal, El.Ice, El.Metal, El.Water, 0.3f);
+            React(El.Water, El.Metal, El.Water, El.Rust, 0.0005f);
+            React(El.SaltWater, El.Metal, El.SaltWater, El.Rust, 0.003f);
+            React(El.BurningCoal, El.Water, El.Coal, El.Steam, 0.3f);
+            React(El.BurningCoal, El.SaltWater, El.Coal, El.Steam, 0.3f);
+            React(El.BurningThermite, El.Metal, El.BurningThermite, El.MoltenMetal, 0.3f);
+            React(El.BurningThermite, El.Stone, El.BurningThermite, El.Lava, 0.1f);
+            React(El.BurningThermite, El.Brick, El.BurningThermite, El.Lava, 0.1f);
+            React(El.BurningThermite, El.Obsidian, El.BurningThermite, El.Lava, 0.05f);
+            React(El.BurningThermite, El.Glass, El.BurningThermite, El.MoltenGlass, 0.2f);
+            React(El.BurningThermite, El.Ice, El.BurningThermite, El.Steam, 0.5f);
+            React(El.BurningThermite, El.Water, El.BurningThermite, El.Steam, 0.5f);
+            React(El.Lava, El.Glass, El.Lava, El.MoltenGlass, 0.01f);
+            React(El.MoltenGlass, El.Water, El.Glass, El.Steam, 0.5f);
+
+            // ---- Living things
+            React(El.Seed, El.Mud, El.Bud, El.Mud, 0.03f);        // seeds sprout fast on wet soil
+            React(El.Seed, El.Dirt, El.Bud, El.Dirt, 0.004f);     // and slowly on dry soil
+            React(El.Moss, El.Stone, El.Moss, El.Moss, 0.003f);   // moss creeps over stone
+            React(El.Water, El.Stone, El.Water, El.Moss, 0.0002f);
+            React(El.Fungus, El.Wood, El.Fungus, El.Fungus, 0.01f);
+            React(El.Fungus, El.Plant, El.Fungus, El.Fungus, 0.01f);
+            React(El.Ant, El.Water, El.Empty, El.Water, 0.02f);   // ants drown
+            React(El.Ant, El.SaltWater, El.Empty, El.SaltWater, 0.02f);
+            React(El.Ant, El.Seed, El.Ant, El.Empty, 0.05f);      // ...eat seeds
+            React(El.Ant, El.Plant, El.Ant, El.Ant, 0.002f);      // ...and breed on plants
+            React(El.Ant, El.Plant, El.Ant, El.Empty, 0.01f);
+            React(El.Worm, El.Water, El.Empty, El.Water, 0.003f); // worms drown slowly
+            React(El.Worm, El.Ash, El.Worm, El.Dirt, 0.05f);      // and turn ash into soil
+
+            // ---- Gases and weather
+            React(El.Steam, El.Cloud, El.Cloud, El.Cloud, 0.05f); // clouds gather steam
+            React(El.PoisonGas, El.Plant, El.PoisonGas, El.Ash, 0.02f);
+            React(El.PoisonGas, El.Bud, El.PoisonGas, El.Ash, 0.05f);
+            React(El.PoisonGas, El.Seed, El.PoisonGas, El.Ash, 0.05f);
+            React(El.PoisonGas, El.Vine, El.PoisonGas, El.Ash, 0.02f);
+            React(El.PoisonGas, El.Moss, El.PoisonGas, El.Ash, 0.02f);
+            React(El.PoisonGas, El.Fungus, El.PoisonGas, El.Ash, 0.01f);
+            React(El.PoisonGas, El.Ant, El.PoisonGas, El.Empty, 0.1f);
+            React(El.PoisonGas, El.Worm, El.PoisonGas, El.Empty, 0.1f);
+            React(El.PoisonGas, El.Water, El.Empty, El.Water, 0.01f);   // water soaks it up
+            React(El.Acid, El.Water, El.Acid, El.Bubble, 0.002f);       // acid fizzes in water
+
+            // ---- Odd and fun
+            React(El.Sponge, El.Water, El.WetSponge, El.Empty, 0.2f);
+            React(El.Sponge, El.SaltWater, El.WetSponge, El.Empty, 0.2f);
+            React(El.WetSponge, El.Fire, El.Sponge, El.Steam, 0.1f);
+            React(El.WetSponge, El.Lava, El.Sponge, El.Lava, 0.2f);
+            React(El.WetSponge, El.Ember, El.Sponge, El.Ember, 0.1f);
+
             React(El.Acid, El.Glass, El.Acid, El.Glass, 1f);      // glass is acid-proof (listed before Any so it wins)
+            React(El.Acid, El.Obsidian, El.Acid, El.Obsidian, 1f);
+            React(El.Acid, El.Brick, El.Acid, El.Brick, 0.8f);    // brick mostly holds up
+            React(El.Acid, El.Metal, El.Acid, El.Hydrogen, 0.03f); // eating metal gives off hydrogen
             React(El.Acid, El.Water, El.Water, El.Water, 0.005f); // gets diluted
             React(El.Acid, El.Any, El.Acid, El.Empty, 0.05f);     // eats things
             React(El.Acid, El.Any, El.Empty, El.Empty, 0.02f);    // and gets used up
 
             React(El.Void, El.Any, El.Void, El.Empty, 1f);        // deletes whatever touches it
+            React(El.Antimatter, El.Fire, El.Antimatter, El.Fire, 1f);   // its own flashes don't set it off,
+            React(El.Antimatter, El.Smoke, El.Antimatter, El.Smoke, 1f); // or a pile would wipe itself out
+            React(El.Antimatter, El.Any, El.Fire, El.Empty, 1f);  // wipes out whatever it touches, in a flash
         }
 
         // ---------------------------------------------------------------------------------
