@@ -2,7 +2,7 @@
 
 A falling-sand sandbox for Android and desktop, made in Unity. Pour sand, water, lava and more onto the screen and watch them fall, flow, burn, melt and explode into each other.
 
-- **Version:** 1.4 (build 5). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
+- **Version:** 1.5 (build 6). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
 - **Android id:** `com.Tony3974.PowderMan`, released on the F-Droid repo at fdroid.tonycad.com.
 - **Unity:** 6000.0.85f1, built-in render pipeline, no extra packages.
 
@@ -16,11 +16,11 @@ The game opens on the **home menu**, with a live demo pouring elements in the ba
 
 The world fills the screen. Its height is fixed (180 cells) and its width follows the screen shape, so a wide phone gets a wider world. If the window changes shape, the world is resized and what's in it is kept.
 
-There is **one pen with two saved slots, A and B** (Sand and Water to start), so you can flip between two elements fast. **Tap** a slot to draw with it. **Double-tap** a slot to open the element picker and change what it holds. The active slot has a gold frame and the other is dimmed. Your A, B and active slot are remembered between runs. One finger draws, and extra fingers are ignored. With a mouse, left draws and right switches between A and B. Set a slot to **Eraser** to rub things out.
+There is **one pen with two saved slots, A and B** (Sand and Water to start), so you can flip between two elements fast. **Tap** the other slot to draw with it. **Tap the active slot again** to open the element picker and change what it holds. The active slot has a gold frame and the other is dimmed. Your A, B and active slot are remembered between runs. One finger draws, and extra fingers are ignored. With a mouse, left draws and right switches between A and B. Set a slot to **Eraser** to rub things out.
 
 A slim strip down the left side holds the controls:
 
-- **A** and **B**: tap to switch, double-tap to pick an element for that slot. Tap outside the picker to close it.
+- **A** and **B**: tap the other one to switch, tap the active one to pick its element. Tap outside the picker to close it.
 - **- 3 +**: brush size (tap the number to reset it).
 - **Pause / Play** and **Step**.
 - **Speed** (×0.25 to ×4), **Replace** mode, **Clear** and **Menu**.
@@ -32,7 +32,7 @@ Pens spray powders, liquids and gases as separate grains rather than solid blobs
 | Input | Action |
 |---|---|
 | Touch | One finger draws with the active slot |
-| Tap / double-tap A or B | Switch to that slot / change its element |
+| Tap A or B | Switch to it, or if it's already active, change its element |
 | Left mouse | Draw with the active slot |
 | Right mouse, Tab | Switch between A and B |
 | Mouse wheel, `[` `]` | Brush size |

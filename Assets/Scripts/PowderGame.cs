@@ -7,8 +7,8 @@ namespace PowderMan
     /// <summary>
     /// Runs the simulation, draws it to a texture, handles mouse/touch/keyboard and the UI.
     ///
-    /// There is one pen with two saved slots, A and B, each holding an element. Tap a slot to draw with it,
-    /// double-tap a slot to pick its element. One finger draws; extra fingers are ignored.
+    /// There is one pen with two saved slots, A and B, each holding an element. Tap the other slot to draw
+    /// with it; tap the active slot again to pick its element. One finger draws; extra fingers are ignored.
     /// With a mouse, left draws and right switches between A and B.
     ///
     /// Keys: mouse wheel or [ ] = brush size, Tab = switch A/B, Space = pause, . = single step while paused,
@@ -52,9 +52,6 @@ namespace PowderMan
         readonly byte[] slots = { El.Sand, El.Water };
         int activeSlot;
         int pickerSlot = -1;    // which slot the element picker is open for, -1 = closed
-        int lastTapSlot = -1;   // for spotting a double-tap on a slot button
-        float lastTapTime;
-        const float DoubleTapTime = 0.35f;
         static string SlotName(int slot) => slot == 0 ? "A" : "B";
 
         // The one stroke being drawn. strokeId = touch fingerId, or MouseStrokeId for the mouse.
@@ -320,27 +317,19 @@ namespace PowderMan
         }
 
         /// <summary>
-        /// A tap on a slot button makes it the active slot straight away. A second tap on the same slot
-        /// within DoubleTapTime opens the element picker for it.
+        /// Tapping the other slot switches to it. Tapping the slot that's already active opens the element
+        /// picker for it (or closes the picker if it's open).
         /// </summary>
         void TapSlot(int slot)
         {
-            float now = Time.unscaledTime;
-            bool doubleTap = slot == lastTapSlot && now - lastTapTime < DoubleTapTime;
-            activeSlot = slot;
-            SaveSlots();
-
-            if (doubleTap)
+            if (slot != activeSlot)
             {
-                pickerSlot = slot;
-                lastTapSlot = -1; // a third tap starts over
+                activeSlot = slot;
+                SaveSlots();
+                if (pickerSlot >= 0) pickerSlot = slot; // picker open: follow the switch
+                return;
             }
-            else
-            {
-                if (pickerSlot >= 0) pickerSlot = pickerSlot == slot ? -1 : slot;
-                lastTapSlot = slot;
-                lastTapTime = now;
-            }
+            pickerSlot = pickerSlot == slot ? -1 : slot;
         }
 
         void LoadSlots()
@@ -564,7 +553,7 @@ namespace PowderMan
 
         /// <summary>
         /// A big swatch showing a slot's element. The active slot gets a gold frame and the other is dimmed.
-        /// Tap = draw with this slot, double-tap = pick its element.
+        /// Tap = draw with this slot; tap it again while it's active = pick its element.
         /// </summary>
         bool SlotButton(Rect r, int slot)
         {
@@ -701,8 +690,8 @@ namespace PowderMan
             }
 
             string hint = Time.unscaledTime < messageUntil ? message
-                : Application.isMobilePlatform ? "Tap A or B to switch   ·   Double-tap one to change its element"
-                : "Left mouse: draw   ·   Right mouse or Tab: switch A/B   ·   Double-click A/B: change it";
+                : Application.isMobilePlatform ? "Tap A or B to switch   ·   Tap the lit one again to change its element"
+                : "Left mouse: draw   ·   Right mouse or Tab: switch A/B   ·   Click the lit slot: change it";
             GUI.Label(new Rect(0, y, Screen.width, hintH), hint, infoStyle);
 
             var version = new Rect(0, Screen.height - Pad - 24f * s, Screen.width - Pad * 2, 24f * s);

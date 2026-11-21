@@ -5,6 +5,7 @@ Ideas and what's done. Tick a box when it's in the game.
 ## Pen
 
 - [x] One pen with two saved slots, A and B: tap to switch, double-tap to change (v1.3)
+- [x] Tap the active slot again to change it, instead of double-tap (v1.5)
 
 ## New elements (v1.4)
 
