@@ -66,6 +66,11 @@ Also changed with this batch: burning wood and plants (Ember) now leave Ash or S
 
 - [ ] The element picker now has 54 buttons. Check they're still big enough to tap on a small screen.
 - [ ] Balance: how fast things spread (Moss, Fungus, Ants breeding), and how much Methane Mud lets off.
+- [ ] Help screen: text size and scrolling by finger on a real phone (checked on desktop at phone-like sizes in v1.6).
+
+## Known issues
+
+- [ ] The side strip is narrow enough at small sizes that "Pause" wraps onto two lines.
 
 ## Later ideas
 

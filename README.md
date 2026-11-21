@@ -12,9 +12,9 @@ Open the folder in Unity Hub, open `Assets/Scenes/Main.unity` and press Play. Th
 
 ## Playing
 
-The game opens on the **home menu**, with a live demo pouring elements in the background. Before you start it has **Play**, **Load save** (when a save exists), **Help** and **Quit**. Once you're playing, the menu has **Resume**, **Save**, **Load save**, **New sandbox**, **Help** and **Quit**.
+The game opens on the **home menu**, with a live demo pouring elements in the background. Before you start it has **Play**, **Load save** (when a save exists), **Help** and **Quit**. Once you're playing, the menu has **Resume**, **Save**, **Load save**, **New sandbox**, **Help** and **Quit**. The version is in the bottom-right corner.
 
-**Help** shows every element in a grid. Tap one to read what it does and what it reacts with. **How to play** at the top explains the controls. When the text is too long for the panel, drag it (or use the mouse wheel) to scroll. The version is in the bottom-right corner.
+**Help** shows every element in a grid. Tap one to read what it does and what it reacts with. **How to play** at the top explains the controls. When the text is too long for the panel, drag it (or use the mouse wheel) to scroll.
 
 The world fills the screen. Its height is fixed (180 cells) and its width follows the screen shape, so a wide phone gets a wider world. If the window changes shape, the world is resized and what's in it is kept.
 
@@ -29,7 +29,7 @@ A slim strip down the left side holds the controls:
 
 The top line shows the element under the mouse, the particle count and the FPS.
 
-Pens spray powders, liquids and gases as separate grains rather than solid blobs (solids like Wall and Wood still draw solid, and brush size 0 always places its grain). Falling grains drift a little sideways as they drop, so streams spread out into loose dots. How thick the spray is is **Spray Density** in the Inspector, and the drift is each element's `Scatter`.
+The pen sprays powders, liquids and gases as separate grains rather than solid blobs (solids like Wall and Wood still draw solid, and brush size 0 always places its grain). Falling grains drift a little sideways as they drop, so streams spread out into loose dots. How thick the spray is is **Spray Density** in the Inspector, and the drift is each element's `Scatter`.
 
 | Input | Action |
 |---|---|
@@ -44,29 +44,29 @@ Pens spray powders, liquids and gases as separate grains rather than solid blobs
 | C | Clear |
 | 1–9 | Pick the element for the active slot |
 | F5 / F9 | Save / load (one slot, in the app's data folder) |
-| Esc / Android back | Close the element picker, or go to the home menu (from the menu, quits) |
+| Esc / Android back | Close the element picker or Help, or go to the home menu (from the menu, quits) |
 
 ## Elements
 
 | Element | Kind | What it does |
 |---|---|---|
-| Wall | solid | Indestructible. Nothing gets through it. |
-| Sand | powder | Piles up and sinks through liquids. Lava melts it into Glass. |
-| Water | liquid | Puts out fire, boils into Steam, turns lava into Stone. |
-| Stone | solid | Lava melts it very slowly. |
-| Wood | solid | Catches fire and burns as Ember. |
-| Fire | gas | Rises, lights flammable things, fades into Smoke. |
-| Ember | solid | Burning wood or plant. Glows, throws off fire, then crumbles. Water puts it out, back to Wood. |
+| Wall | solid | Indestructible. Nothing gets through it, and it can hold Antimatter. |
+| Sand | powder | Piles up and sinks through liquids. Lava or Lightning turns it into Glass. |
+| Water | liquid | Puts out fire, boils into Steam, turns lava into Stone. Makes Mud with Dirt and Salt Water with Salt. Grows Plants and Moss, rusts Metal, drowns Ants and Worms. |
+| Stone | solid | Lava melts it very slowly, Burning Thermite quickly. Moss creeps over it. |
+| Wood | solid | Catches fire and burns as Ember. Fungus eats it. |
+| Fire | gas | Rises, lights flammable things, fades into Smoke. Melts Ice and Snow, dries Mud, bakes Clay. |
+| Ember | solid | Burning wood or plant. Glows, throws off fire, then crumbles into Ash or Smoke. Water puts it out, back to Wood. |
 | Oil | liquid | Floats on water and burns fast. |
-| Lava | liquid | Slow and hot. Lights things, turns to Stone in water, melts Ice, Snow and Sand. |
-| Ice | solid | Slowly freezes the water next to it. Heat melts it. |
+| Lava | liquid | Slow and hot. Lights things, turns to Stone in water, melts Ice (sometimes into Obsidian) and Snow, turns Sand into Glass, melts Metal and Glass. |
+| Ice | solid | Slowly freezes the water next to it. Heat, Salt and Salt Water melt it. |
 | Snow | powder | Light, floats on water and melts in it. |
-| Plant | solid | Drinks water and grows. Burns. |
-| Acid | liquid | Eats everything except Glass and indestructible things, and gets used up doing it. |
+| Plant | solid | Drinks water and grows, and keeps sprouting on Mud. Burns. Ants, Fungus and Poison Gas kill it. |
+| Acid | liquid | Eats everything except Glass, Obsidian and indestructible things (Brick only slowly), and gets used up doing it. Gives off Hydrogen from Metal and fizzes Bubbles in Water. |
 | Gunpowder | powder | Explodes (small) when lit, and sets off chain reactions. |
 | TNT | solid | Explodes (big) when lit. |
-| Glass | solid | Acid-proof. Made by lava touching sand. |
-| Steam | gas | Rises, then condenses into falling Water (rain). |
+| Glass | solid | Acid-proof. Made by Lava or Lightning hitting Sand. Lava and Thermite melt it into Molten Glass. |
+| Steam | gas | Rises, then condenses into falling Water (rain). Clouds gather it. |
 | Smoke | gas | Rises and fades. |
 | Cloner | solid | Copies the first thing that touches it, forever. |
 | Void | solid | Deletes anything that touches it. |
@@ -110,15 +110,15 @@ Most changes go in **`Assets/Scripts/Elements.cs`**, where every element and rea
 **Add an element:** give it an id in `El`, then add it in `DefineElements()`. Element picker buttons follow the order of the `Add` calls. Then write its Help text in `Assets/Scripts/ElementHelp.cs`.
 
 ```csharp
-public const byte Mud = 21;   // in El
+public const byte Tar = 59;   // in El, the next free id
 
-Add(El.Mud, new Element { Name = "Mud", Kind = Kind.Powder, Color = Hex("#6b4a2b"), Density = 13 });
+Add(El.Tar, new Element { Name = "Tar", Kind = Kind.Liquid, Color = Hex("#1c1a17"), Density = 12, MoveChance = 0.2f, Flammability = 0.1f });
 ```
 
-**Add a reaction:** one line in `DefineReactions()`. It works both ways round. `El.Any` matches anything except Empty, itself and indestructible elements. Specific reactions should come before `Any` ones, because the first match wins.
+**Add a reaction:** one line in `DefineReactions()`. It works both ways round. `El.Any` matches anything except Empty, itself and indestructible elements. Reactions are tried in order and the first one that happens wins, so put specific reactions before `Any` ones.
 
 ```csharp
-React(El.Water, El.Sand, El.Water, El.Mud, 0.01f);   // a, b, a becomes, b becomes, chance per tick
+React(El.Tar, El.Sand, El.Tar, El.Stone, 0.01f);   // a, b, a becomes, b becomes, chance per tick
 ```
 
 The main `Element` settings:
@@ -137,7 +137,7 @@ The main `Element` settings:
 | `LifeMin`, `LifeMax`, `DecaysInto`, `DecayChance`, `DecaysElse` | Disappears after a while (Fire, Smoke, Steam, Ember). Life is at most 255 ticks: set `DecaysElse` to the element itself to make it last longer (Cloud, Molten Metal) |
 | `Emits`, `EmitChance` | Spawns something into empty neighbours (Ember throws off Fire) |
 | `Flicker` | Re-rolls its shade every tick |
-| `Indestructible` | Explosions, Acid and Void can't touch it |
+| `Indestructible` | Explosions, Acid, Void, Antimatter and Black Holes can't touch it |
 | `HiddenFromToolbar` | Not in the element picker |
 
 Other files:
@@ -146,6 +146,7 @@ Other files:
 - **`Assets/Scripts/PowderGame.cs`**: rendering, input (touch, mouse, keys), the side strip, the element picker, the home menu and its demo. Grid height (180), tick rate, brush limits and spray density are in the Inspector on the `Powder Game` object. Turn off **Fit Width To Screen** there to use a fixed **Grid Width** instead.
 - **`Assets/Scripts/ElementHelp.cs`**: the Help screen text for each element. Update it when you change what an element does.
 - **`Assets/Scripts/BuildInfo.cs`**: the version.
+- **`plan.md`**: ideas, what's done, and what still needs checking.
 - **`Assets/Editor/AndroidBuild.cs`**: the APK build and icon setup.
 
 ## App icon
