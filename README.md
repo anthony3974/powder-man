@@ -2,7 +2,7 @@
 
 A falling-sand sandbox for Android and desktop, made in Unity. Pour sand, water, lava and more onto the screen and watch them fall, flow, burn, melt and explode into each other.
 
-- **Version:** 1.5 (build 6). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
+- **Version:** 1.6 (build 7). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
 - **Android id:** `com.Tony3974.PowderMan`, released on the F-Droid repo at fdroid.tonycad.com.
 - **Unity:** 6000.0.85f1, built-in render pipeline, no extra packages.
 
@@ -12,7 +12,9 @@ Open the folder in Unity Hub, open `Assets/Scenes/Main.unity` and press Play. Th
 
 ## Playing
 
-The game opens on the **home menu**, with a live demo pouring elements in the background. Before you start it has **Play**, **Load save** (when a save exists) and **Quit**. Once you're playing, the menu has **Resume**, **Save**, **Load save**, **New sandbox** and **Quit**. The version is in the bottom-right corner.
+The game opens on the **home menu**, with a live demo pouring elements in the background. Before you start it has **Play**, **Load save** (when a save exists), **Help** and **Quit**. Once you're playing, the menu has **Resume**, **Save**, **Load save**, **New sandbox**, **Help** and **Quit**.
+
+**Help** shows every element in a grid. Tap one to read what it does and what it reacts with. **How to play** at the top explains the controls. When the text is too long for the panel, drag it (or use the mouse wheel) to scroll. The version is in the bottom-right corner.
 
 The world fills the screen. Its height is fixed (180 cells) and its width follows the screen shape, so a wide phone gets a wider world. If the window changes shape, the world is resized and what's in it is kept.
 
@@ -105,7 +107,7 @@ Pens spray powders, liquids and gases as separate grains rather than solid blobs
 
 Most changes go in **`Assets/Scripts/Elements.cs`**, where every element and reaction is defined.
 
-**Add an element:** give it an id in `El`, then add it in `DefineElements()`. Element picker buttons follow the order of the `Add` calls.
+**Add an element:** give it an id in `El`, then add it in `DefineElements()`. Element picker buttons follow the order of the `Add` calls. Then write its Help text in `Assets/Scripts/ElementHelp.cs`.
 
 ```csharp
 public const byte Mud = 21;   // in El
@@ -142,6 +144,7 @@ Other files:
 
 - **`Assets/Scripts/Simulation.cs`**: the grid and the rules for movement, burning, explosions, reactions, save/load, and the elements that need their own code (Cloner, Bouncy Ball, Nitro, Bubble, Lightning, Black Hole, Portals, Ant, Worm, Vine and sprouting Seeds, in `UpdateSpecial`).
 - **`Assets/Scripts/PowderGame.cs`**: rendering, input (touch, mouse, keys), the side strip, the element picker, the home menu and its demo. Grid height (180), tick rate, brush limits and spray density are in the Inspector on the `Powder Game` object. Turn off **Fit Width To Screen** there to use a fixed **Grid Width** instead.
+- **`Assets/Scripts/ElementHelp.cs`**: the Help screen text for each element. Update it when you change what an element does.
 - **`Assets/Scripts/BuildInfo.cs`**: the version.
 - **`Assets/Editor/AndroidBuild.cs`**: the APK build and icon setup.
 

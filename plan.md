@@ -7,6 +7,10 @@ Ideas and what's done. Tick a box when it's in the game.
 - [x] One pen with two saved slots, A and B: tap to switch, double-tap to change (v1.3)
 - [x] Tap the active slot again to change it, instead of double-tap (v1.5)
 
+## Help
+
+- [x] Help screen in the home menu: every element with what it does and reacts with, plus How to play (v1.6)
+
 ## New elements (v1.4)
 
 ### Earth

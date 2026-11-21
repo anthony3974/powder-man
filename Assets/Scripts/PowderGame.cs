@@ -70,6 +70,9 @@ namespace PowderMan
 
         // Home menu
         bool inMenu = true;
+        bool helpOpen;          // the Help screen, opened from the home menu
+        int helpItem = -1;      // which element the Help screen shows, -1 = How to play
+        float helpScroll;       // how far the Help text is scrolled, in pixels
         bool started;           // false until the first Play, while the demo runs behind the menu
         float demoSwapAt;
         readonly byte[] demoSpouts = new byte[3];
@@ -224,6 +227,7 @@ namespace PowderMan
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 if (pickerSlot >= 0) pickerSlot = -1;
+                else if (helpOpen) helpOpen = false;
                 else if (inMenu) Application.Quit();
                 else OpenMenu();
             }
@@ -462,7 +466,7 @@ namespace PowderMan
         static readonly Color32 EraserColor = new Color32(70, 72, 88, 255);
         static readonly Color DarkText = new Color(0.08f, 0.08f, 0.1f);
 
-        GUIStyle labelStyle, smallStyle, infoStyle, titleStyle, menuStyle;
+        GUIStyle labelStyle, smallStyle, infoStyle, titleStyle, menuStyle, helpNameStyle, helpTagStyle, helpBodyStyle;
 
         /// <summary>UI size multiplier. On phones it's based on DPI so buttons stay finger-sized.</summary>
         float UiScale
@@ -492,7 +496,8 @@ namespace PowderMan
                 GUI.enabled = false;
                 DrawStrip();
                 GUI.enabled = true;
-                DrawMenu();
+                if (helpOpen) DrawHelp();
+                else DrawMenu();
                 return;
             }
 
@@ -667,6 +672,7 @@ namespace PowderMan
                 items.Add(("Play", () => Play()));
                 if (hasSave) items.Add(("Load save", () => { Play(); Load(); }));
             }
+            items.Add(("Help", () => { helpOpen = true; helpScroll = 0f; }));
             items.Add(("Quit", () => Application.Quit()));
 
             float titleH = 64f * s, subH = 24f * s, hintH = 40f * s;
@@ -698,6 +704,96 @@ namespace PowderMan
             infoStyle.alignment = TextAnchor.LowerRight;
             GUI.Label(version, $"v{BuildInfo.Version}  (build {BuildInfo.VersionCode})", infoStyle);
             infoStyle.alignment = TextAnchor.UpperLeft;
+        }
+
+        /// <summary>
+        /// The Help screen: a grid of every element (plus How to play) on the left, and what the chosen one
+        /// does on the right. The text scrolls by dragging or with the mouse wheel when it doesn't fit.
+        /// </summary>
+        void DrawHelp()
+        {
+            float s = UiScale;
+            Fill(new Rect(0, 0, Screen.width, Screen.height), new Color32(14, 15, 21, 248));
+
+            float pad = 12f * s, gap = 5f * s;
+            var safe = Screen.safeArea;
+            float left = safe.xMin + pad, right = safe.xMax - pad;
+            float top = Screen.height - safe.yMax + pad, bottom = Screen.height - safe.yMin - pad;
+            float barH = 40f * s;
+
+            helpNameStyle.normal.textColor = Color.white;
+            GUI.Label(new Rect(left, top, right - left, barH), "Help", helpNameStyle);
+            if (Btn(new Rect(right - 110f * s, top, 110f * s, barH), "Back", OnColor)) helpOpen = false;
+
+            float y0 = top + barH + pad, h = bottom - y0, w = right - left;
+            var grid = new Rect(left, y0, Mathf.Round(w * 0.5f), h);
+            var detail = new Rect(grid.xMax + pad, y0, right - grid.xMax - pad, h);
+
+            // ---- Grid: How to play, then every element in picker order. Pick the column count that gives the biggest buttons.
+            var bar = ElementDatabase.Toolbar;
+            int count = bar.Count + 1;
+            int cols = 1;
+            float best = -1f;
+            for (int c = 2; c <= 12; c++)
+            {
+                int r = Mathf.CeilToInt(count / (float)c);
+                float cw = (grid.width - gap * (c - 1)) / c, ch = (grid.height - gap * (r - 1)) / r;
+                float score = Mathf.Min(cw / 2.6f, ch);
+                if (score > best) { best = score; cols = c; }
+            }
+            int rows = Mathf.CeilToInt(count / (float)cols);
+            float bw = (grid.width - gap * (cols - 1)) / cols;
+            float bh = Mathf.Min(40f * s, (grid.height - gap * (rows - 1)) / rows);
+            var style = bh < 24f * s || bw < 80f * s ? smallStyle : labelStyle;
+
+            for (int n = 0; n < count; n++)
+            {
+                int item = n - 1;                                  // -1 = How to play
+                byte id = item < 0 ? El.Empty : bar[item];
+                var r = new Rect(grid.x + (n % cols) * (bw + gap), grid.y + (n / cols) * (bh + gap), bw, bh);
+                Color32 c = item < 0 ? OnColor : ElementDatabase.Table[id].Color;
+                if (Btn(r, item < 0 ? "How to play" : ElementName(id), c, style) && helpItem != item)
+                {
+                    helpItem = item;
+                    helpScroll = 0f;
+                }
+                if (helpItem == item) Outline(r, Color.white, 2f * s);
+            }
+
+            // ---- Detail: swatch, name, tags, then the text.
+            Fill(detail, PanelColor);
+            Outline(detail, EdgeColor, Mathf.Max(1f, s));
+            float ip = 14f * s, sw = 38f * s;
+            byte shown = helpItem < 0 ? El.Empty : bar[Mathf.Clamp(helpItem, 0, bar.Count - 1)];
+            var swatch = new Rect(detail.x + ip, detail.y + ip, sw, sw);
+            Fill(swatch, helpItem < 0 ? (Color)OnColor : (Color)ElementDatabase.Table[shown].Color);
+            Outline(swatch, EdgeColor, Mathf.Max(1f, s));
+            float tx = swatch.xMax + 10f * s, tw = detail.xMax - ip - tx;
+            GUI.Label(new Rect(tx, swatch.y - 2f * s, tw, sw * 0.62f), helpItem < 0 ? ElementHelp.HowToPlayTitle : ElementName(shown), helpNameStyle);
+            if (helpItem >= 0) GUI.Label(new Rect(tx, swatch.y + sw * 0.58f, tw, sw * 0.45f), ElementHelp.Tags(shown), helpTagStyle);
+
+            var body = new Rect(detail.x + ip, swatch.yMax + 12f * s, detail.width - ip * 2, detail.yMax - ip - swatch.yMax - 12f * s);
+            string text = helpItem < 0 ? ElementHelp.HowToPlay : ElementHelp.For(shown);
+            float contentH = helpBodyStyle.CalcHeight(new GUIContent(text), body.width);
+            float maxScroll = Mathf.Max(0f, contentH - body.height);
+
+            var ev = Event.current;
+            if (ev.type == EventType.ScrollWheel && detail.Contains(ev.mousePosition)) { helpScroll += ev.delta.y * 20f * s; ev.Use(); }
+            else if (ev.type == EventType.MouseDrag && detail.Contains(ev.mousePosition)) { helpScroll -= ev.delta.y; ev.Use(); }
+            helpScroll = Mathf.Clamp(helpScroll, 0f, maxScroll);
+
+            GUI.BeginGroup(body);
+            GUI.Label(new Rect(0f, -helpScroll, body.width, contentH), text, helpBodyStyle);
+            GUI.EndGroup();
+
+            if (maxScroll > 0f)
+            {
+                // A thin bar on the right edge showing where you are in the text.
+                float trackX = detail.xMax - 5f * s, thumbH = Mathf.Max(20f * s, body.height * body.height / contentH);
+                float thumbY = body.y + (body.height - thumbH) * (helpScroll / maxScroll);
+                Fill(new Rect(trackX, body.y, 3f * s, body.height), EdgeColor);
+                Fill(new Rect(trackX, thumbY, 3f * s, thumbH), OnColor);
+            }
         }
 
         void DrawBrushPreview()
@@ -740,6 +836,11 @@ namespace PowderMan
             titleStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = Mathf.RoundToInt(52 * UiScale), fontStyle = FontStyle.Bold };
             titleStyle.normal.textColor = ElementDatabase.Table[El.Sand].Color;
             menuStyle = new GUIStyle(labelStyle) { fontSize = Mathf.RoundToInt(20 * UiScale) };
+            helpNameStyle = new GUIStyle(labelStyle) { alignment = TextAnchor.MiddleLeft, fontSize = Mathf.RoundToInt(20 * UiScale) };
+            helpTagStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.UpperLeft, fontSize = Mathf.RoundToInt(12 * UiScale), padding = new RectOffset(0, 0, 0, 0) };
+            helpTagStyle.normal.textColor = new Color(0.6f, 0.63f, 0.72f);
+            helpBodyStyle = new GUIStyle(GUI.skin.label) { fontSize = Mathf.RoundToInt(14 * UiScale), wordWrap = true, richText = true, padding = new RectOffset(0, 6, 0, 0) };
+            helpBodyStyle.normal.textColor = new Color(0.88f, 0.9f, 0.94f);
         }
 
         static void Fill(Rect r, Color c)
