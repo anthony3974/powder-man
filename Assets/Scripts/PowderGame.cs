@@ -29,22 +29,18 @@ namespace PowderMan
         [Tooltip("Simulation ticks per second at speed x1.")]
         [SerializeField] float ticksPerSecond = 60f;
 
-        [Header("Effects")]
-        [Tooltip("How far falling things wobble, in cells. 0 = off.")]
-        [Range(0f, 4f)] [SerializeField] float fallDistortion = 1.2f;
-        [Tooltip("How long the wobble lingers after something stops falling. Higher = longer.")]
-        [Range(0.5f, 0.98f)] [SerializeField] float distortionFade = 0.88f;
-
         [Header("Brush")]
         [SerializeField] int brushSize = 3;
         [SerializeField] int maxBrushSize = 30;
+        [Tooltip("Powders, liquids and gases come out as a spray of separate grains: the chance each empty cell " +
+                 "under the brush gets one, per frame. 1 = solid blobs. Solids are always drawn solid.")]
+        [Range(0.02f, 1f)] [SerializeField] float sprayDensity = 0.12f;
 
         static readonly float[] Speeds = { 0.25f, 0.5f, 1f, 2f, 4f };
 
         Simulation sim;
         Texture2D texture;
         SpriteRenderer view;
-        Material worldMaterial;   // null if the distortion shader is missing; then alpha stays opaque
         Color32[] pixels;
         Color32[] palette;
         Camera cam;
@@ -86,12 +82,6 @@ namespace PowderMan
             var go = new GameObject("World View");
             go.transform.SetParent(transform, false);
             view = go.AddComponent<SpriteRenderer>();
-            var shader = Resources.Load<Shader>("WorldDistort");
-            if (shader != null && shader.isSupported)
-            {
-                worldMaterial = new Material(shader);
-                view.sharedMaterial = worldMaterial;
-            }
 
             cam = Camera.main;
             if (cam == null) cam = new GameObject("Main Camera", typeof(Camera)) { tag = "MainCamera" }.GetComponent<Camera>();
@@ -130,10 +120,7 @@ namespace PowderMan
                 wrapMode = TextureWrapMode.Clamp,
             };
             pixels = new Color32[width * gridHeight];
-            // FullRect: alpha holds the fall effect, so a tight mesh would trim the world away.
-            view.sprite = Sprite.Create(texture, new Rect(0, 0, width, gridHeight), new Vector2(0.5f, 0.5f), 1f, 0, SpriteMeshType.FullRect);
-            if (worldMaterial != null)
-                worldMaterial.SetVector("_GridSize", new Vector4(width, gridHeight, 1f / width, 1f / gridHeight));
+            view.sprite = Sprite.Create(texture, new Rect(0, 0, width, gridHeight), new Vector2(0.5f, 0.5f), 1f);
             strokes.Clear();
             if (!started) StartDemo();
         }
@@ -183,7 +170,7 @@ namespace PowderMan
                 demoSwapAt = Time.time + 4f;
             }
             for (int n = 0; n < demoSpouts.Length; n++)
-                sim.Paint(W * (n + 1) / (demoSpouts.Length + 1), H - 3, 1, demoSpouts[n], false);
+                sim.Paint(W * (n + 1) / (demoSpouts.Length + 1), H - 3, 2, demoSpouts[n], false, 0.25f);
 
             if (particleCount > W * H / 2) StartDemo(); // getting clogged, start over
         }
@@ -261,31 +248,16 @@ namespace PowderMan
             Render();
         }
 
-        /// <summary>
-        /// Writes the cells to the texture. The alpha channel carries how recently each cell had something
-        /// fall through it, which the WorldDistort shader turns into a wobble. It fades a bit every frame.
-        /// </summary>
         void Render()
         {
             var cells = sim.Cells;
-            var fall = sim.Fall;
-            bool distort = worldMaterial != null && fallDistortion > 0f;
-            int keep = Mathf.RoundToInt(distortionFade * 256f);
             int count = 0;
             for (int i = 0; i < cells.Length; i++)
             {
                 byte t = cells[i];
                 if (t != El.Empty) count++;
-                var c = palette[t * 16 + sim.Shade(i)];
-                if (worldMaterial != null)
-                {
-                    byte m = fall[i];
-                    c.a = distort ? m : (byte)0;
-                    if (m != 0) fall[i] = (byte)((m * keep) >> 8);
-                }
-                pixels[i] = c;
+                pixels[i] = palette[t * 16 + sim.Shade(i)];
             }
-            if (worldMaterial != null) worldMaterial.SetFloat("_Strength", distort ? fallDistortion : 0f);
             particleCount = count;
             texture.SetPixels32(pixels);
             texture.Apply(false);
@@ -386,17 +358,23 @@ namespace PowderMan
 
         bool PenBusy(int pen) => strokes.Exists(s => s.Pen == pen);
 
-        /// <summary>Paints along the line between two cells so fast strokes don't leave gaps.</summary>
+        /// <summary>
+        /// Paints along the line between two cells so fast strokes don't leave gaps. Brush stamps are spaced
+        /// about one radius apart, so a moving spray stays about as sparse as one held still.
+        /// A size-0 brush always places its grain, for precise work.
+        /// </summary>
         void PaintLine(int pen, Vector2Int from, Vector2Int to)
         {
             byte type = pens[pen];
             bool replace = replaceMode || type == El.Empty;
+            float density = brushSize == 0 ? 1f : sprayDensity;
             int dx = to.x - from.x, dy = to.y - from.y;
-            int steps = Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy));
+            int spacing = Mathf.Max(1, brushSize);
+            int steps = Mathf.CeilToInt(Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) / (float)spacing);
             for (int s = 0; s <= steps; s++)
             {
                 float f = steps == 0 ? 1f : s / (float)steps;
-                sim.Paint(Mathf.RoundToInt(from.x + dx * f), Mathf.RoundToInt(from.y + dy * f), brushSize, type, replace);
+                sim.Paint(Mathf.RoundToInt(from.x + dx * f), Mathf.RoundToInt(from.y + dy * f), brushSize, type, replace, density);
             }
         }
 

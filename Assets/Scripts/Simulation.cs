@@ -16,12 +16,6 @@ namespace PowderMan
         readonly byte[] life;   // remaining ticks for things that decay; for Cloner, the element it copies
         readonly byte[] shade;  // 0..15, picks a colour variant
         readonly int[] stamp;   // tick number a cell last moved/changed, so nothing moves twice per tick
-
-        /// <summary>
-        /// Set to 255 where something just fell (both the cell it left and the one it landed in).
-        /// Not cleared here: the renderer fades it out and uses it for the falling distortion effect.
-        /// </summary>
-        public readonly byte[] Fall;
         int tick;
         uint rng = 2463534242u;
 
@@ -39,7 +33,6 @@ namespace PowderMan
             life = new byte[n];
             shade = new byte[n];
             stamp = new int[n];
-            Fall = new byte[n];
         }
 
         public bool InBounds(int x, int y) => (uint)x < (uint)Width && (uint)y < (uint)Height;
@@ -50,7 +43,6 @@ namespace PowderMan
         {
             Array.Clear(Cells, 0, Cells.Length);
             Array.Clear(life, 0, life.Length);
-            Array.Clear(Fall, 0, Fall.Length);
         }
 
         public void Set(int x, int y, byte type)
@@ -58,11 +50,14 @@ namespace PowderMan
             if (InBounds(x, y)) SetIndex(y * Width + x, type);
         }
 
-        /// <summary>Paints a filled circle. Only fills empty cells unless replace is true.</summary>
-        public void Paint(int cx, int cy, int radius, byte type, bool replace)
+        /// <summary>
+        /// Paints a circle. Only fills empty cells unless replace is true. For powders, liquids and gases,
+        /// each cell is filled with chance `density` (a spray of separate grains); solids and the eraser always fill.
+        /// </summary>
+        public void Paint(int cx, int cy, int radius, byte type, bool replace, float density = 1f)
         {
             var e = E[type];
-            float fill = e.Kind switch { Kind.Powder => 0.5f, Kind.Liquid => 0.7f, Kind.Gas => 0.5f, _ => 1f };
+            float fill = e.Kind == Kind.Solid || e.Kind == Kind.Empty ? 1f : density;
             int r2 = radius * radius + radius;
             for (int dy = -radius; dy <= radius; dy++)
             for (int dx = -radius; dx <= radius; dx++)
@@ -130,18 +125,20 @@ namespace PowderMan
             {
                 case Kind.Powder:
                 {
-                    if (TryFall(i, x, y - 1, e)) return;
                     int d = RandDir();
-                    if (TryFall(i, x + d, y - 1, e)) return;
-                    TryFall(i, x - d, y - 1, e);
+                    if (Scatter(i, x, y, d, e)) return;
+                    if (TryMove(i, x, y - 1, e)) return;
+                    if (TryMove(i, x + d, y - 1, e)) return;
+                    TryMove(i, x - d, y - 1, e);
                     break;
                 }
                 case Kind.Liquid:
                 {
-                    if (TryFall(i, x, y - 1, e)) return;
                     int d = RandDir();
-                    if (TryFall(i, x + d, y - 1, e)) return;
-                    if (TryFall(i, x - d, y - 1, e)) return;
+                    if (Scatter(i, x, y, d, e)) return;
+                    if (TryMove(i, x, y - 1, e)) return;
+                    if (TryMove(i, x + d, y - 1, e)) return;
+                    if (TryMove(i, x - d, y - 1, e)) return;
                     if (Slide(i, x, y, d, e.Spread)) return;
                     Slide(i, x, y, -d, e.Spread);
                     break;
@@ -242,13 +239,14 @@ namespace PowderMan
             }
         }
 
-        /// <summary>TryMove for a downward move, marking the cells in Fall.</summary>
-        bool TryFall(int i, int nx, int ny, Element e)
+        /// <summary>
+        /// Free-falling grains (nothing under them) sometimes drift diagonally instead of straight down,
+        /// so falling streams fan out into loose grains. Piles aren't affected.
+        /// </summary>
+        bool Scatter(int i, int x, int y, int d, Element e)
         {
-            if (!TryMove(i, nx, ny, e)) return false;
-            Fall[i] = 255;
-            Fall[ny * Width + nx] = 255;
-            return true;
+            if (e.Scatter <= 0f || Get(x, y - 1) != El.Empty || Rand01() >= e.Scatter) return false;
+            return TryMove(i, x + d, y - 1, e);
         }
 
         bool TryMove(int i, int nx, int ny, Element e)

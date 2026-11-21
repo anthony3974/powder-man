@@ -67,6 +67,8 @@ namespace PowderMan
         public int Spread = 3;
         /// <summary>Chance per tick to move at all. Below 1 makes it sluggish (lava).</summary>
         public float MoveChance = 1f;
+        /// <summary>Powders and liquids: chance per tick to drift sideways while falling through air. 0 = falls straight.</summary>
+        public float Scatter = 0.15f;
 
         /// <summary>0 = cold. Above 0 sets fire to flammable neighbours: chance per tick = Heat x their Flammability.</summary>
         public float Heat;

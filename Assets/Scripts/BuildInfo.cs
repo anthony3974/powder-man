@@ -6,7 +6,7 @@ namespace PowderMan
     /// </summary>
     public static class BuildInfo
     {
-        public const string Version = "1.1";
-        public const int VersionCode = 2;
+        public const string Version = "1.2";
+        public const int VersionCode = 3;
     }
 }

@@ -2,7 +2,7 @@
 
 A falling-sand sandbox for Android and desktop, made in Unity. Pour sand, water, lava and more onto the screen and watch them fall, flow, burn, melt and explode into each other.
 
-- **Version:** 1.1 (build 2). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
+- **Version:** 1.2 (build 3). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
 - **Android id:** `com.Tony3974.PowderMan`, released on the F-Droid repo at fdroid.tonycad.com.
 - **Unity:** 6000.0.85f1, built-in render pipeline, no extra packages.
 
@@ -27,7 +27,7 @@ A slim strip down the left side holds the controls:
 
 The top line shows the element under the mouse, the particle count and the FPS.
 
-Falling powders and liquids shimmer with a heat-haze wobble that fades once they settle. Its strength and how long it lingers are **Fall Distortion** and **Distortion Fade** in the Inspector (0 turns it off). The effect is the shader `Assets/Resources/WorldDistort.shader`.
+Pens spray powders, liquids and gases as separate grains rather than solid blobs (solids like Wall and Wood still draw solid, and brush size 0 always places its grain). Falling grains drift a little sideways as they drop, so streams spread out into loose dots. How thick the spray is is **Spray Density** in the Inspector, and the drift is each element's `Scatter`.
 
 | Input | Action |
 |---|---|
@@ -94,6 +94,7 @@ The main `Element` settings:
 | `Density` | Heavier powders and liquids sink through lighter liquids and gases |
 | `Spread` | How far liquids and gases slide sideways per tick |
 | `MoveChance` | Below 1 makes it sluggish (Lava is 0.35) |
+| `Scatter` | Chance per tick a falling powder or liquid drifts sideways while in the air (default 0.15, 0 = falls straight) |
 | `Heat` | Sets fire to neighbours. Chance per tick = Heat × their Flammability |
 | `Flammability`, `BurnsInto` | How easily it catches, and what it becomes |
 | `ExplodeRadius` | Explodes instead of burning |
@@ -106,7 +107,7 @@ The main `Element` settings:
 Other files:
 
 - **`Assets/Scripts/Simulation.cs`**: the grid and the rules for movement, burning, explosions, reactions, the Cloner, and save/load.
-- **`Assets/Scripts/PowderGame.cs`**: rendering, input (touch, mouse, keys), the side strip, the element picker, the home menu and its demo. Grid height (180), tick rate and brush limits are in the Inspector on the `Powder Game` object. Turn off **Fit Width To Screen** there to use a fixed **Grid Width** instead.
+- **`Assets/Scripts/PowderGame.cs`**: rendering, input (touch, mouse, keys), the side strip, the element picker, the home menu and its demo. Grid height (180), tick rate, brush limits and spray density are in the Inspector on the `Powder Game` object. Turn off **Fit Width To Screen** there to use a fixed **Grid Width** instead.
 - **`Assets/Scripts/BuildInfo.cs`**: the version.
 - **`Assets/Editor/AndroidBuild.cs`**: the APK build and icon setup.
 
