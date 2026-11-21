@@ -14,7 +14,7 @@ namespace PowderMan.EditorTools
     ///
     /// Tools > Powder Man > Build APK: apks/PowderMan.apk. Applies the app id, the version from BuildInfo.cs
     ///   and the icon first. Bump BuildInfo.VersionCode before each release.
-    /// Tools > Powder Man > Redraw App Icon: regenerates the PNGs in Assets/Icons (pixel-art sand pile).
+    /// The icon PNGs in Assets/Icons come from Art/make_stickman_icons.py (the "running" draft).
     ///
     /// Without the editor (Unity closed):
     ///   Unity -batchmode -nographics -projectPath . -executeMethod PowderMan.EditorTools.AndroidBuild.CommandLine -logFile Logs/android-build.log
@@ -86,20 +86,17 @@ namespace PowderMan.EditorTools
 
         // ------------------------------------------------------------------ icon
 
-        [MenuItem("Tools/Powder Man/Redraw App Icon")]
-        static void RedrawIcon()
-        {
-            DrawIconFiles();
-            ApplyIcons();
-        }
-
         static void ApplyIcons()
         {
-            if (!File.Exists(IconFolder + "AppIcon.png")) DrawIconFiles();
             var legacy = LoadIcon("AppIcon.png");
             var round = LoadIcon("AppIcon_Round.png");
             var background = LoadIcon("AppIcon_Background.png");
             var foreground = LoadIcon("AppIcon_Foreground.png");
+            if (legacy == null || round == null || background == null || foreground == null)
+            {
+                Debug.LogError($"App icon PNGs missing from {IconFolder}. Make them with Art/make_stickman_icons.py.");
+                return;
+            }
 
             var android = NamedBuildTarget.Android;
             SetAllSizes(android, AndroidPlatformIconKind.Legacy, legacy);
@@ -109,70 +106,6 @@ namespace PowderMan.EditorTools
             PlayerSettings.SetPlatformIcons(android, AndroidPlatformIconKind.Adaptive, adaptive);
             PlayerSettings.SetIcons(NamedBuildTarget.Unknown, new[] { legacy }, IconKind.Any);
             AssetDatabase.SaveAssets();
-        }
-
-        /// <summary>A pixel-art sand pile with a stream of grains falling onto it, on the world's background colour.</summary>
-        static void DrawIconFiles()
-        {
-            const int size = 432, cells = 36, cell = size / cells;
-            var bg = new Color32[size * size];
-            var fg = new Color32[size * size];
-            Color32 bgTop = new Color32(30, 33, 46, 255), bgBottom = new Color32(14, 16, 23, 255);
-            for (int y = 0; y < size; y++)
-            for (int x = 0; x < size; x++)
-                bg[y * size + x] = Color32.Lerp(bgBottom, bgTop, y / (float)size);
-
-            var sand = ElementDatabase.Table[El.Sand];
-            var rng = new System.Random(7);
-            Color32 Grain() => Color32.Lerp(sand.Color, sand.Color2, (float)rng.NextDouble());
-
-            void Cell(int cx, int cy, Color32 c)
-            {
-                for (int y = 0; y < cell; y++)
-                for (int x = 0; x < cell; x++)
-                    fg[(cy * cell + y) * size + cx * cell + x] = c;
-            }
-
-            // The pile: a mound in the adaptive-icon safe zone (cells ~7..29).
-            const int baseRow = 9, centre = 18;
-            for (int cx = 8; cx <= 28; cx++)
-            {
-                int height = Mathf.Max(1, 9 - Mathf.RoundToInt(Mathf.Abs(cx - centre) * 0.85f) + rng.Next(0, 2));
-                for (int cy = baseRow; cy < baseRow + height; cy++) Cell(cx, cy, Grain());
-            }
-            // The falling stream, with gaps.
-            for (int cy = baseRow + 10; cy <= 28; cy++)
-            {
-                if (rng.NextDouble() < 0.8) Cell(centre, cy, Grain());
-                if (rng.NextDouble() < 0.35) Cell(centre + (rng.Next(2) == 0 ? -1 : 1), cy, Grain());
-            }
-
-            var legacy = new Color32[size * size];
-            var round = new Color32[size * size];
-            float r = size / 2f;
-            for (int i = 0; i < legacy.Length; i++)
-            {
-                var c = fg[i].a > 0 ? fg[i] : bg[i];
-                legacy[i] = c;
-                float dx = i % size + 0.5f - r, dy = i / size + 0.5f - r;
-                round[i] = dx * dx + dy * dy <= r * r ? c : new Color32(0, 0, 0, 0);
-            }
-
-            Directory.CreateDirectory(IconFolder);
-            WritePng("AppIcon.png", legacy, size);
-            WritePng("AppIcon_Round.png", round, size);
-            WritePng("AppIcon_Background.png", bg, size);
-            WritePng("AppIcon_Foreground.png", fg, size);
-            AssetDatabase.Refresh();
-        }
-
-        static void WritePng(string file, Color32[] pixels, int size)
-        {
-            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            tex.SetPixels32(pixels);
-            tex.Apply();
-            File.WriteAllBytes(IconFolder + file, tex.EncodeToPNG());
-            UnityEngine.Object.DestroyImmediate(tex);
         }
 
         static void SetAllSizes(NamedBuildTarget target, PlatformIconKind kind, Texture2D texture)
@@ -186,6 +119,7 @@ namespace PowderMan.EditorTools
         static Texture2D LoadIcon(string file)
         {
             string path = IconFolder + file;
+            if (!File.Exists(path)) return null;
             if (AssetImporter.GetAtPath(path) is not TextureImporter importer)
             {
                 AssetDatabase.ImportAsset(path);
