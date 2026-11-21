@@ -2,7 +2,7 @@
 
 A falling-sand sandbox for Android and desktop, made in Unity. Pour sand, water, lava and more onto the screen and watch them fall, flow, burn, melt and explode into each other.
 
-- **Version:** 1.2 (build 3). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
+- **Version:** 1.3 (build 4). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
 - **Android id:** `com.Tony3974.PowderMan`, released on the F-Droid repo at fdroid.tonycad.com.
 - **Unity:** 6000.0.85f1, built-in render pipeline, no extra packages.
 
@@ -16,11 +16,11 @@ The game opens on the **home menu**, with a live demo pouring elements in the ba
 
 The world fills the screen. Its height is fixed (180 cells) and its width follows the screen shape, so a wide phone gets a wider world. If the window changes shape, the world is resized and what's in it is kept.
 
-There are **two pens**, each with its own element (Sand and Water to start). On a touch screen, the first finger draws with pen 1 and a second finger at the same time draws with pen 2. With a mouse, left draws with pen 1 and right with pen 2. Set a pen to **Eraser** to rub things out.
+There is **one pen with two saved slots, A and B** (Sand and Water to start), so you can flip between two elements fast. **Tap** a slot to draw with it. **Double-tap** a slot to open the element picker and change what it holds. The active slot has a gold frame and the other is dimmed. Your A, B and active slot are remembered between runs. One finger draws, and extra fingers are ignored. With a mouse, left draws and right switches between A and B. Set a slot to **Eraser** to rub things out.
 
 A slim strip down the left side holds the controls:
 
-- **Pen 1** and **Pen 2**: tap one to open the element picker, then tap an element. Tap outside the picker to close it.
+- **A** and **B**: tap to switch, double-tap to pick an element for that slot. Tap outside the picker to close it.
 - **- 3 +**: brush size (tap the number to reset it).
 - **Pause / Play** and **Step**.
 - **Speed** (×0.25 to ×4), **Replace** mode, **Clear** and **Menu**.
@@ -31,14 +31,16 @@ Pens spray powders, liquids and gases as separate grains rather than solid blobs
 
 | Input | Action |
 |---|---|
-| Touch | First finger draws with pen 1, a second finger with pen 2 |
-| Left / right mouse | Draw with pen 1 / pen 2 |
+| Touch | One finger draws with the active slot |
+| Tap / double-tap A or B | Switch to that slot / change its element |
+| Left mouse | Draw with the active slot |
+| Right mouse, Tab | Switch between A and B |
 | Mouse wheel, `[` `]` | Brush size |
 | Space | Pause / play |
 | `.` | Step one tick (while paused) |
 | R | Replace mode: draw over things, not just into empty space |
 | C | Clear |
-| 1–9, Shift+1–9 | Pick the element for pen 1, pen 2 |
+| 1–9 | Pick the element for the active slot |
 | F5 / F9 | Save / load (one slot, in the app's data folder) |
 | Esc / Android back | Close the element picker, or go to the home menu (from the menu, quits) |
 

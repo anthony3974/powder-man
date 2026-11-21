@@ -7,11 +7,12 @@ namespace PowderMan
     /// <summary>
     /// Runs the simulation, draws it to a texture, handles mouse/touch/keyboard and the UI.
     ///
-    /// There are two pens, each with its own element. On a touch screen the first finger draws with
-    /// pen 1 and a second finger at the same time draws with pen 2. With a mouse, left = pen 1, right = pen 2.
+    /// There is one pen with two saved slots, A and B, each holding an element. Tap a slot to draw with it,
+    /// double-tap a slot to pick its element. One finger draws; extra fingers are ignored.
+    /// With a mouse, left draws and right switches between A and B.
     ///
-    /// Keys: mouse wheel or [ ] = brush size, Space = pause, . = single step while paused, R = replace mode,
-    /// C = clear, 1-9 = element for pen 1, Shift+1-9 = element for pen 2, F5 = save, F9 = load,
+    /// Keys: mouse wheel or [ ] = brush size, Tab = switch A/B, Space = pause, . = single step while paused,
+    /// R = replace mode, C = clear, 1-9 = element for the active slot, F5 = save, F9 = load,
     /// Esc / Android back = close the element picker, or the home menu (quits from the menu).
     ///
     /// The world fills the screen right of the side strip: its height is fixed and its width follows the
@@ -47,12 +48,20 @@ namespace PowderMan
         Vector2Int screenSize;
         float resizeAt;
 
-        // Pens and strokes
-        readonly byte[] pens = { El.Sand, El.Water };
-        int pickerPen = -1;     // which pen the element picker is open for, -1 = closed
-        struct Stroke { public int Id, Pen; public Vector2Int Last; }
-        readonly List<Stroke> strokes = new List<Stroke>();   // Id = touch fingerId, or MouseId(button)
-        static int MouseId(int button) => -1 - button;
+        // The pen: two saved slots (A, B) and which one is drawing. Kept between runs in PlayerPrefs.
+        readonly byte[] slots = { El.Sand, El.Water };
+        int activeSlot;
+        int pickerSlot = -1;    // which slot the element picker is open for, -1 = closed
+        int lastTapSlot = -1;   // for spotting a double-tap on a slot button
+        float lastTapTime;
+        const float DoubleTapTime = 0.35f;
+        static string SlotName(int slot) => slot == 0 ? "A" : "B";
+
+        // The one stroke being drawn. strokeId = touch fingerId, or MouseStrokeId for the mouse.
+        bool drawing;
+        int strokeId;
+        Vector2Int strokeLast;
+        const int MouseStrokeId = -1;
 
         bool paused, replaceMode;
         int speedIndex = 2;
@@ -78,6 +87,7 @@ namespace PowderMan
             Application.targetFrameRate = 60;
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
             BuildPalette();
+            LoadSlots();
 
             var go = new GameObject("World View");
             go.transform.SetParent(transform, false);
@@ -121,7 +131,7 @@ namespace PowderMan
             };
             pixels = new Color32[width * gridHeight];
             view.sprite = Sprite.Create(texture, new Rect(0, 0, width, gridHeight), new Vector2(0.5f, 0.5f), 1f);
-            strokes.Clear();
+            drawing = false;
             if (!started) StartDemo();
         }
 
@@ -184,14 +194,14 @@ namespace PowderMan
                 paused = false;
             }
             inMenu = false;
-            strokes.Clear();
+            drawing = false;
         }
 
         void OpenMenu()
         {
             inMenu = true;
-            pickerPen = -1;
-            strokes.Clear();
+            pickerSlot = -1;
+            drawing = false;
         }
 
         void BuildPalette()
@@ -216,7 +226,7 @@ namespace PowderMan
 
             if (Input.GetKeyDown(KeyCode.Escape))
             {
-                if (pickerPen >= 0) pickerPen = -1;
+                if (pickerSlot >= 0) pickerSlot = -1;
                 else if (inMenu) Application.Quit();
                 else OpenMenu();
             }
@@ -282,11 +292,11 @@ namespace PowderMan
             if (Input.GetKeyDown(KeyCode.RightBracket)) ChangeBrush(1);
             if (Input.GetKeyDown(KeyCode.F5)) Save();
             if (Input.GetKeyDown(KeyCode.F9)) Load();
+            if (Input.GetKeyDown(KeyCode.Tab)) SwitchSlot();
 
             var bar = ElementDatabase.Toolbar;
-            int pen = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift) ? 1 : 0;
             for (int n = 0; n < 9 && n < bar.Count; n++)
-                if (Input.GetKeyDown(KeyCode.Alpha1 + n)) pens[pen] = bar[n];
+                if (Input.GetKeyDown(KeyCode.Alpha1 + n)) SetSlot(activeSlot, bar[n]);
 
             float wheel = Input.mouseScrollDelta.y;
             if (wheel > 0.01f) ChangeBrush(1);
@@ -294,6 +304,64 @@ namespace PowderMan
         }
 
         void ChangeBrush(int delta) => brushSize = Mathf.Clamp(brushSize + delta, 0, maxBrushSize);
+
+        // ------------------------------------------------------------------ pen slots A / B
+
+        void SwitchSlot()
+        {
+            activeSlot = 1 - activeSlot;
+            SaveSlots();
+        }
+
+        void SetSlot(int slot, byte element)
+        {
+            slots[slot] = element;
+            SaveSlots();
+        }
+
+        /// <summary>
+        /// A tap on a slot button makes it the active slot straight away. A second tap on the same slot
+        /// within DoubleTapTime opens the element picker for it.
+        /// </summary>
+        void TapSlot(int slot)
+        {
+            float now = Time.unscaledTime;
+            bool doubleTap = slot == lastTapSlot && now - lastTapTime < DoubleTapTime;
+            activeSlot = slot;
+            SaveSlots();
+
+            if (doubleTap)
+            {
+                pickerSlot = slot;
+                lastTapSlot = -1; // a third tap starts over
+            }
+            else
+            {
+                if (pickerSlot >= 0) pickerSlot = pickerSlot == slot ? -1 : slot;
+                lastTapSlot = slot;
+                lastTapTime = now;
+            }
+        }
+
+        void LoadSlots()
+        {
+            for (int s = 0; s < 2; s++)
+            {
+                int id = PlayerPrefs.GetInt("slot" + SlotName(s), slots[s]);
+                if (id == El.Empty || (id > 0 && id < 256 && ElementDatabase.Table[id] != null)) slots[s] = (byte)id;
+            }
+            activeSlot = Mathf.Clamp(PlayerPrefs.GetInt("activeSlot", 0), 0, 1);
+        }
+
+        void SaveSlots()
+        {
+            PlayerPrefs.SetInt("slotA", slots[0]);
+            PlayerPrefs.SetInt("slotB", slots[1]);
+            PlayerPrefs.SetInt("activeSlot", activeSlot);
+        }
+
+        void OnApplicationPause(bool goingToBackground) { if (goingToBackground) PlayerPrefs.Save(); }
+        void OnApplicationQuit() => PlayerPrefs.Save();
 
         // ------------------------------------------------------------------ drawing (touch + mouse)
 
@@ -306,7 +374,7 @@ namespace PowderMan
                     var t = Input.GetTouch(n);
                     switch (t.phase)
                     {
-                        case TouchPhase.Began: BeginStroke(t.fingerId, t.position, -1); break;
+                        case TouchPhase.Began: BeginStroke(t.fingerId, t.position); break;
                         case TouchPhase.Moved:
                         case TouchPhase.Stationary: ContinueStroke(t.fingerId, t.position); break;
                         default: EndStroke(t.fingerId); break;
@@ -315,57 +383,49 @@ namespace PowderMan
                 return;
             }
 
-            // No fingers down: drop any touch strokes that never got an Ended phase.
-            strokes.RemoveAll(s => s.Id >= 0);
+            // No fingers down: drop a touch stroke that never got an Ended phase.
+            if (drawing && strokeId != MouseStrokeId) drawing = false;
 
-            for (int b = 0; b < 2; b++)
-            {
-                int id = MouseId(b);
-                if (Input.GetMouseButtonDown(b)) BeginStroke(id, Input.mousePosition, b);
-                else if (Input.GetMouseButton(b)) ContinueStroke(id, Input.mousePosition);
-                else EndStroke(id);
-            }
+            if (Input.GetMouseButtonDown(0)) BeginStroke(MouseStrokeId, Input.mousePosition);
+            else if (Input.GetMouseButton(0)) ContinueStroke(MouseStrokeId, Input.mousePosition);
+            else EndStroke(MouseStrokeId);
+
+            if (Input.GetMouseButtonDown(1) && OverWorld(Input.mousePosition) && pickerSlot < 0) SwitchSlot();
         }
 
-        /// <summary>Starts a stroke if the press is over the world. pen = -1 takes whichever pen is free.</summary>
-        void BeginStroke(int id, Vector2 screenPos, int pen)
+        /// <summary>Starts a stroke if the press is over the world and nothing else is drawing.</summary>
+        void BeginStroke(int id, Vector2 screenPos)
         {
-            if (pickerPen >= 0 || !OverWorld(screenPos)) return;
-            EndStroke(id);
-            if (pen < 0)
-            {
-                if (!PenBusy(0)) pen = 0;
-                else if (!PenBusy(1)) pen = 1;
-                else return; // a third finger does nothing
-            }
+            if (pickerSlot >= 0 || !OverWorld(screenPos)) return;
+            if (drawing && strokeId != id) return; // one stroke at a time: other fingers are ignored
             var cell = ScreenCell(screenPos);
-            strokes.Add(new Stroke { Id = id, Pen = pen, Last = cell });
-            PaintLine(pen, cell, cell);
+            drawing = true;
+            strokeId = id;
+            strokeLast = cell;
+            PaintLine(cell, cell);
         }
 
         void ContinueStroke(int id, Vector2 screenPos)
         {
-            int k = strokes.FindIndex(s => s.Id == id);
-            if (k < 0) return;
-            var s = strokes[k];
+            if (!drawing || strokeId != id) return;
             var cell = ScreenCell(screenPos);
-            PaintLine(s.Pen, s.Last, cell);
-            s.Last = cell;
-            strokes[k] = s;
+            PaintLine(strokeLast, cell);
+            strokeLast = cell;
         }
 
-        void EndStroke(int id) => strokes.RemoveAll(s => s.Id == id);
-
-        bool PenBusy(int pen) => strokes.Exists(s => s.Pen == pen);
+        void EndStroke(int id)
+        {
+            if (drawing && strokeId == id) drawing = false;
+        }
 
         /// <summary>
-        /// Paints along the line between two cells so fast strokes don't leave gaps. Brush stamps are spaced
-        /// about one radius apart, so a moving spray stays about as sparse as one held still.
-        /// A size-0 brush always places its grain, for precise work.
+        /// Paints the active slot's element along the line between two cells so fast strokes don't leave gaps.
+        /// Brush stamps are spaced about one radius apart, so a moving spray stays about as sparse as one held
+        /// still. A size-0 brush always places its grain, for precise work.
         /// </summary>
-        void PaintLine(int pen, Vector2Int from, Vector2Int to)
+        void PaintLine(Vector2Int from, Vector2Int to)
         {
-            byte type = pens[pen];
+            byte type = slots[activeSlot];
             bool replace = replaceMode || type == El.Empty;
             float density = brushSize == 0 ? 1f : sprayDensity;
             int dx = to.x - from.x, dy = to.y - from.y;
@@ -448,19 +508,19 @@ namespace PowderMan
             }
 
             DrawStrip();
-            if (pickerPen >= 0) DrawPicker();
+            if (pickerSlot >= 0) DrawPicker();
             else DrawBrushPreview();
             DrawInfo();
         }
 
-        /// <summary>The side strip: the two pens, brush size, and the play/speed/replace/clear/menu tools.</summary>
+        /// <summary>The side strip: pen slots A and B, brush size, and the play/speed/replace/clear/menu tools.</summary>
         void DrawStrip()
         {
             float s = UiScale;
             Fill(new Rect(0, 0, StripRight, Screen.height), PanelColor);
             Fill(new Rect(StripRight - Mathf.Max(1f, s), 0, Mathf.Max(1f, s), Screen.height), EdgeColor);
 
-            // Rows, in units of one button height: two tall pen buttons, then six tool rows.
+            // Rows, in units of one button height: two tall slot buttons, then six tool rows.
             const float penRows = 1.7f;
             const int toolRows = 6;
             float top = Screen.height - Screen.safeArea.yMax + Pad;
@@ -471,7 +531,7 @@ namespace PowderMan
             for (int p = 0; p < 2; p++)
             {
                 var r = new Rect(x, y, w, unit * penRows);
-                if (PenButton(r, p)) pickerPen = pickerPen == p ? -1 : p;
+                if (SlotButton(r, p)) TapSlot(p);
                 y += r.height + Gap;
             }
             y += Gap * 2;
@@ -502,27 +562,34 @@ namespace PowderMan
             if (Btn(new Rect(x, y, w, unit), "Menu", ButtonColor)) OpenMenu();
         }
 
-        /// <summary>A big swatch showing the pen's element. Tapping it opens the element picker.</summary>
-        bool PenButton(Rect r, int pen)
+        /// <summary>
+        /// A big swatch showing a slot's element. The active slot gets a gold frame and the other is dimmed.
+        /// Tap = draw with this slot, double-tap = pick its element.
+        /// </summary>
+        bool SlotButton(Rect r, int slot)
         {
-            byte id = pens[pen];
+            float s = UiScale;
+            byte id = slots[slot];
+            bool active = slot == activeSlot;
             Color32 c = id == El.Empty ? EraserColor : ElementDatabase.Table[id].Color;
             bool clicked = Btn(r, "", c);
             Color text = Luminance(c) > 0.55f ? DarkText : Color.white;
 
-            smallStyle.normal.textColor = new Color(text.r, text.g, text.b, 0.7f);
+            smallStyle.normal.textColor = new Color(text.r, text.g, text.b, 0.8f);
             smallStyle.alignment = TextAnchor.UpperCenter;
-            GUI.Label(new Rect(r.x, r.y + 3f * UiScale, r.width, r.height), $"PEN {pen + 1}", smallStyle);
+            GUI.Label(new Rect(r.x, r.y + 3f * s, r.width, r.height), active ? $"{SlotName(slot)} · ON" : SlotName(slot), smallStyle);
             smallStyle.alignment = TextAnchor.MiddleCenter;
 
             labelStyle.normal.textColor = text;
             GUI.Label(new Rect(r.x, r.y + r.height * 0.15f, r.width, r.height * 0.85f), ElementName(id), labelStyle);
 
-            if (pickerPen == pen) Outline(r, Color.white, 2f * UiScale);
+            if (!active) Fill(r, new Color(0f, 0f, 0f, 0.45f));
+            if (active) Outline(r, OnColor, 3f * s);
+            if (pickerSlot == slot) Outline(new Rect(r.x - 2f * s, r.y - 2f * s, r.width + 4f * s, r.height + 4f * s), Color.white, 2f * s);
             return clicked;
         }
 
-        /// <summary>A panel of every element. Picks one for pickerPen. Tapping outside closes it.</summary>
+        /// <summary>A panel of every element. Picks one for pickerSlot. Tapping outside closes it.</summary>
         void DrawPicker()
         {
             float s = UiScale;
@@ -544,7 +611,7 @@ namespace PowderMan
             Outline(panel, EdgeColor, Mathf.Max(1f, s));
 
             infoStyle.alignment = TextAnchor.MiddleLeft;
-            GUI.Label(new Rect(panel.x + pad, panel.y + pad, pw, titleH - gap), $"Pen {pickerPen + 1}: pick an element", infoStyle);
+            GUI.Label(new Rect(panel.x + pad, panel.y + pad, pw, titleH - gap), $"Slot {SlotName(pickerSlot)}: pick an element", infoStyle);
             infoStyle.alignment = TextAnchor.UpperLeft;
 
             for (int n = 0; n < count; n++)
@@ -554,13 +621,14 @@ namespace PowderMan
                 Color32 c = id == El.Empty ? EraserColor : ElementDatabase.Table[id].Color;
                 if (Btn(r, ElementName(id), c))
                 {
-                    pens[pickerPen] = id;
-                    pickerPen = -1;
+                    activeSlot = pickerSlot;
+                    SetSlot(pickerSlot, id);
+                    pickerSlot = -1;
                 }
-                if (pickerPen >= 0 && id == pens[pickerPen]) Outline(r, Color.white, 2f * s);
+                if (pickerSlot >= 0 && id == slots[pickerSlot]) Outline(r, Color.white, 2f * s);
 
-                // Small badge saying which pens have this element.
-                string badge = (pens[0] == id ? "1" : "") + (pens[1] == id ? "2" : "");
+                // Small badge saying which slots have this element.
+                string badge = (slots[0] == id ? "A" : "") + (slots[1] == id ? "B" : "");
                 if (badge.Length > 0)
                 {
                     smallStyle.normal.textColor = Luminance(c) > 0.55f ? DarkText : Color.white;
@@ -573,7 +641,7 @@ namespace PowderMan
             var ev = Event.current;
             if (ev.type == EventType.MouseDown && !panel.Contains(ev.mousePosition) && ev.mousePosition.x >= StripRight)
             {
-                pickerPen = -1;
+                pickerSlot = -1;
                 ev.Use();
             }
         }
@@ -633,8 +701,8 @@ namespace PowderMan
             }
 
             string hint = Time.unscaledTime < messageUntil ? message
-                : Application.isMobilePlatform ? "Draw with two fingers at once to use both pens"
-                : "Left mouse: pen 1   ·   Right mouse: pen 2   ·   Wheel: brush size";
+                : Application.isMobilePlatform ? "Tap A or B to switch   ·   Double-tap one to change its element"
+                : "Left mouse: draw   ·   Right mouse or Tab: switch A/B   ·   Double-click A/B: change it";
             GUI.Label(new Rect(0, y, Screen.width, hintH), hint, infoStyle);
 
             var version = new Rect(0, Screen.height - Pad - 24f * s, Screen.width - Pad * 2, 24f * s);
