@@ -9,7 +9,7 @@ namespace PowderMan
     //  To add a new element:
     //    1. Give it an id in El below (any unused number from 1 to 254).
     //    2. Add it in ElementDatabase.DefineElements() with Add(El.MyThing, new Element { ... }).
-    //       Toolbar buttons appear in the order you Add them.
+    //       Element picker buttons appear in the order you Add them.
     //    3. Optionally add reactions in DefineReactions() with React(...).
     // =====================================================================================
 

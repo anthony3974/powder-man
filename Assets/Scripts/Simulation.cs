@@ -16,6 +16,12 @@ namespace PowderMan
         readonly byte[] life;   // remaining ticks for things that decay; for Cloner, the element it copies
         readonly byte[] shade;  // 0..15, picks a colour variant
         readonly int[] stamp;   // tick number a cell last moved/changed, so nothing moves twice per tick
+
+        /// <summary>
+        /// Set to 255 where something just fell (both the cell it left and the one it landed in).
+        /// Not cleared here: the renderer fades it out and uses it for the falling distortion effect.
+        /// </summary>
+        public readonly byte[] Fall;
         int tick;
         uint rng = 2463534242u;
 
@@ -33,6 +39,7 @@ namespace PowderMan
             life = new byte[n];
             shade = new byte[n];
             stamp = new int[n];
+            Fall = new byte[n];
         }
 
         public bool InBounds(int x, int y) => (uint)x < (uint)Width && (uint)y < (uint)Height;
@@ -43,6 +50,7 @@ namespace PowderMan
         {
             Array.Clear(Cells, 0, Cells.Length);
             Array.Clear(life, 0, life.Length);
+            Array.Clear(Fall, 0, Fall.Length);
         }
 
         public void Set(int x, int y, byte type)
@@ -122,18 +130,18 @@ namespace PowderMan
             {
                 case Kind.Powder:
                 {
-                    if (TryMove(i, x, y - 1, e)) return;
+                    if (TryFall(i, x, y - 1, e)) return;
                     int d = RandDir();
-                    if (TryMove(i, x + d, y - 1, e)) return;
-                    TryMove(i, x - d, y - 1, e);
+                    if (TryFall(i, x + d, y - 1, e)) return;
+                    TryFall(i, x - d, y - 1, e);
                     break;
                 }
                 case Kind.Liquid:
                 {
-                    if (TryMove(i, x, y - 1, e)) return;
+                    if (TryFall(i, x, y - 1, e)) return;
                     int d = RandDir();
-                    if (TryMove(i, x + d, y - 1, e)) return;
-                    if (TryMove(i, x - d, y - 1, e)) return;
+                    if (TryFall(i, x + d, y - 1, e)) return;
+                    if (TryFall(i, x - d, y - 1, e)) return;
                     if (Slide(i, x, y, d, e.Spread)) return;
                     Slide(i, x, y, -d, e.Spread);
                     break;
@@ -234,6 +242,15 @@ namespace PowderMan
             }
         }
 
+        /// <summary>TryMove for a downward move, marking the cells in Fall.</summary>
+        bool TryFall(int i, int nx, int ny, Element e)
+        {
+            if (!TryMove(i, nx, ny, e)) return false;
+            Fall[i] = 255;
+            Fall[ny * Width + nx] = 255;
+            return true;
+        }
+
         bool TryMove(int i, int nx, int ny, Element e)
         {
             if (!InBounds(nx, ny)) return false;
@@ -305,21 +322,38 @@ namespace PowderMan
             w.Write(Cells);
         }
 
-        /// <summary>Loads a save. If the grid size changed, the overlapping bottom-left part is kept.</summary>
+        /// <summary>Loads a save. If the grid size changed, the bottom rows are kept, centred sideways.</summary>
         public bool Load(string path)
         {
             if (!File.Exists(path)) return false;
             using var r = new BinaryReader(File.OpenRead(path));
             int w = r.ReadInt32(), h = r.ReadInt32();
             byte[] data = r.ReadBytes(w * h);
-            Clear();
-            for (int y = 0; y < Mathf.Min(h, Height); y++)
-            for (int x = 0; x < Mathf.Min(w, Width); x++)
-            {
-                byte t = data[y * w + x];
-                if (t != El.Empty && E[t] != null) SetIndex(y * Width + x, t);
-            }
+            Import(data, null, w, h);
             return true;
+        }
+
+        /// <summary>Copies another world into this one (used when the screen changes shape).</summary>
+        public void CopyFrom(Simulation other) => Import(other.Cells, other.life, other.Width, other.Height);
+
+        /// <summary>Replaces the world with a w x h grid of cells: bottom rows kept, centred sideways.</summary>
+        void Import(byte[] data, byte[] lifeData, int w, int h)
+        {
+            Clear();
+            int ox = (Width - w) / 2;
+            for (int y = 0; y < Mathf.Min(h, Height); y++)
+            for (int x = 0; x < w; x++)
+            {
+                int tx = x + ox;
+                if ((uint)tx >= (uint)Width) continue;
+                int src = y * w + x;
+                if (src >= data.Length) return; // truncated save
+                byte t = data[src];
+                if (t == El.Empty || E[t] == null) continue;
+                int i = y * Width + tx;
+                SetIndex(i, t);
+                if (lifeData != null) life[i] = lifeData[src];
+            }
         }
     }
 }

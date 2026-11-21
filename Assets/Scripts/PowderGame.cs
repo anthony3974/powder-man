@@ -1,24 +1,39 @@
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
 namespace PowderMan
 {
     /// <summary>
-    /// Runs the simulation, draws it to a texture, handles mouse/touch/keyboard and the toolbar.
+    /// Runs the simulation, draws it to a texture, handles mouse/touch/keyboard and the UI.
     ///
-    /// Controls: left mouse / touch = draw, right mouse = erase, mouse wheel or [ ] = brush size,
-    /// Space = pause, . = single step while paused, R = replace mode, C = clear, 1-9 = pick element,
-    /// F5 = save, F9 = load, Esc / Android back = home menu (quits from the menu).
+    /// There are two pens, each with its own element. On a touch screen the first finger draws with
+    /// pen 1 and a second finger at the same time draws with pen 2. With a mouse, left = pen 1, right = pen 2.
     ///
-    /// The home menu runs a little demo in the world behind it until you press Play.
+    /// Keys: mouse wheel or [ ] = brush size, Space = pause, . = single step while paused, R = replace mode,
+    /// C = clear, 1-9 = element for pen 1, Shift+1-9 = element for pen 2, F5 = save, F9 = load,
+    /// Esc / Android back = close the element picker, or the home menu (quits from the menu).
+    ///
+    /// The world fills the screen right of the side strip: its height is fixed and its width follows the
+    /// screen shape. The home menu runs a little demo in the world behind it until you press Play.
     /// </summary>
     public class PowderGame : MonoBehaviour
     {
         [Header("World")]
-        [SerializeField] int gridWidth = 320;
+        [Tooltip("Rows of cells. Cell size on screen = screen height / this.")]
         [SerializeField] int gridHeight = 180;
+        [Tooltip("Pick the number of columns so the world fills the screen. Off = use Grid Width.")]
+        [SerializeField] bool fitWidthToScreen = true;
+        [Tooltip("Columns of cells, only used when Fit Width To Screen is off.")]
+        [SerializeField] int gridWidth = 320;
         [Tooltip("Simulation ticks per second at speed x1.")]
         [SerializeField] float ticksPerSecond = 60f;
+
+        [Header("Effects")]
+        [Tooltip("How far falling things wobble, in cells. 0 = off.")]
+        [Range(0f, 4f)] [SerializeField] float fallDistortion = 1.2f;
+        [Tooltip("How long the wobble lingers after something stops falling. Higher = longer.")]
+        [Range(0.5f, 0.98f)] [SerializeField] float distortionFade = 0.88f;
 
         [Header("Brush")]
         [SerializeField] int brushSize = 3;
@@ -28,15 +43,24 @@ namespace PowderMan
 
         Simulation sim;
         Texture2D texture;
+        SpriteRenderer view;
+        Material worldMaterial;   // null if the distortion shader is missing; then alpha stays opaque
         Color32[] pixels;
         Color32[] palette;
         Camera cam;
+        Vector2Int screenSize;
+        float resizeAt;
 
-        byte selected = El.Sand;
-        bool paused, replaceMode, drawing;
+        // Pens and strokes
+        readonly byte[] pens = { El.Sand, El.Water };
+        int pickerPen = -1;     // which pen the element picker is open for, -1 = closed
+        struct Stroke { public int Id, Pen; public Vector2Int Last; }
+        readonly List<Stroke> strokes = new List<Stroke>();   // Id = touch fingerId, or MouseId(button)
+        static int MouseId(int button) => -1 - button;
+
+        bool paused, replaceMode;
         int speedIndex = 2;
         float tickTimer;
-        Vector2Int lastCell;
         int particleCount;
         float fps;
         string message;
@@ -50,25 +74,24 @@ namespace PowderMan
         static readonly byte[] DemoElements = { El.Sand, El.Water, El.Oil, El.Snow, El.Lava, El.Gunpowder, El.Acid, El.Fire };
 
         string SavePath => Path.Combine(Application.persistentDataPath, "sandbox.sav");
+        int W => sim.Width;
+        int H => sim.Height;
 
         void Start()
         {
             Application.targetFrameRate = 60;
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
-            sim = new Simulation(gridWidth, gridHeight);
             BuildPalette();
 
-            texture = new Texture2D(gridWidth, gridHeight, TextureFormat.RGBA32, false)
+            var go = new GameObject("World View");
+            go.transform.SetParent(transform, false);
+            view = go.AddComponent<SpriteRenderer>();
+            var shader = Resources.Load<Shader>("WorldDistort");
+            if (shader != null && shader.isSupported)
             {
-                filterMode = FilterMode.Point,
-                wrapMode = TextureWrapMode.Clamp,
-            };
-            pixels = new Color32[gridWidth * gridHeight];
-
-            var view = new GameObject("World View");
-            view.transform.SetParent(transform, false);
-            var sr = view.AddComponent<SpriteRenderer>();
-            sr.sprite = Sprite.Create(texture, new Rect(0, 0, gridWidth, gridHeight), new Vector2(0.5f, 0.5f), 1f);
+                worldMaterial = new Material(shader);
+                view.sharedMaterial = worldMaterial;
+            }
 
             cam = Camera.main;
             if (cam == null) cam = new GameObject("Main Camera", typeof(Camera)) { tag = "MainCamera" }.GetComponent<Camera>();
@@ -78,8 +101,61 @@ namespace PowderMan
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color32(8, 9, 13, 255);
 
-            StartDemo();
+            screenSize = new Vector2Int(Screen.width, Screen.height);
+            MakeWorld(TargetWidth());
             Render();
+        }
+
+        // ------------------------------------------------------------------ world size
+
+        int TargetWidth()
+        {
+            if (!fitWidthToScreen) return gridWidth;
+            float areaW = Screen.width - StripRight, areaH = Mathf.Max(1f, Screen.height);
+            return Mathf.Clamp(Mathf.RoundToInt(gridHeight * areaW / areaH), gridHeight / 2, gridHeight * 4);
+        }
+
+        /// <summary>Makes a world of the given width, keeping what was in the old one (bottom rows, centred).</summary>
+        void MakeWorld(int width)
+        {
+            var old = sim;
+            sim = new Simulation(width, gridHeight);
+            if (old != null && started) sim.CopyFrom(old);
+
+            if (texture != null) Destroy(texture);
+            if (view.sprite != null) Destroy(view.sprite);
+            texture = new Texture2D(width, gridHeight, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
+            };
+            pixels = new Color32[width * gridHeight];
+            // FullRect: alpha holds the fall effect, so a tight mesh would trim the world away.
+            view.sprite = Sprite.Create(texture, new Rect(0, 0, width, gridHeight), new Vector2(0.5f, 0.5f), 1f, 0, SpriteMeshType.FullRect);
+            if (worldMaterial != null)
+                worldMaterial.SetVector("_GridSize", new Vector4(width, gridHeight, 1f / width, 1f / gridHeight));
+            strokes.Clear();
+            if (!started) StartDemo();
+        }
+
+        /// <summary>
+        /// Re-fits the world when the screen changes shape (window resize, or a phone that reports
+        /// the wrong orientation on the first frame). Waits for the size to settle first.
+        /// </summary>
+        void CheckResize()
+        {
+            var size = new Vector2Int(Screen.width, Screen.height);
+            if (size != screenSize)
+            {
+                screenSize = size;
+                resizeAt = Time.unscaledTime + 0.3f;
+            }
+            if (resizeAt > 0f && Time.unscaledTime >= resizeAt)
+            {
+                resizeAt = 0f;
+                int w = TargetWidth();
+                if (w != W) MakeWorld(w);
+            }
         }
 
         // ------------------------------------------------------------------ home menu
@@ -88,12 +164,12 @@ namespace PowderMan
         void StartDemo()
         {
             sim.Clear();
-            for (int x = 0; x < gridWidth; x++) sim.Set(x, 0, El.Void);
-            int ledge = gridWidth / 4;
+            for (int x = 0; x < W; x++) sim.Set(x, 0, El.Void);
+            int ledge = W / 4;
             for (int s = 0; s < ledge; s++)
             {
-                sim.Paint(gridWidth / 8 + s, gridHeight * 3 / 5 - s / 3, 1, El.Stone, true);
-                sim.Paint(gridWidth * 7 / 8 - s, gridHeight * 2 / 5 - s / 3, 1, El.Stone, true);
+                sim.Paint(W / 8 + s, H * 3 / 5 - s / 3, 1, El.Stone, true);
+                sim.Paint(W * 7 / 8 - s, H * 2 / 5 - s / 3, 1, El.Stone, true);
             }
             demoSwapAt = 0f;
         }
@@ -107,9 +183,9 @@ namespace PowderMan
                 demoSwapAt = Time.time + 4f;
             }
             for (int n = 0; n < demoSpouts.Length; n++)
-                sim.Paint(gridWidth * (n + 1) / (demoSpouts.Length + 1), gridHeight - 3, 1, demoSpouts[n], false);
+                sim.Paint(W * (n + 1) / (demoSpouts.Length + 1), H - 3, 1, demoSpouts[n], false);
 
-            if (particleCount > gridWidth * gridHeight / 2) StartDemo(); // getting clogged, start over
+            if (particleCount > W * H / 2) StartDemo(); // getting clogged, start over
         }
 
         void Play()
@@ -121,13 +197,14 @@ namespace PowderMan
                 paused = false;
             }
             inMenu = false;
-            drawing = false;
+            strokes.Clear();
         }
 
         void OpenMenu()
         {
             inMenu = true;
-            drawing = false;
+            pickerPen = -1;
+            strokes.Clear();
         }
 
         void BuildPalette()
@@ -147,15 +224,22 @@ namespace PowderMan
         void Update()
         {
             fps = Mathf.Lerp(fps, 1f / Mathf.Max(Time.unscaledDeltaTime, 0.0001f), 0.05f);
+            CheckResize();
             FitCamera();
+
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                if (pickerPen >= 0) pickerPen = -1;
+                else if (inMenu) Application.Quit();
+                else OpenMenu();
+            }
+
             if (inMenu)
             {
-                if (Input.GetKeyDown(KeyCode.Escape)) Application.Quit();
                 if (!started) UpdateDemo();
             }
             else
             {
-                if (Input.GetKeyDown(KeyCode.Escape)) OpenMenu();
                 HandleKeys();
                 HandlePointer();
             }
@@ -177,28 +261,43 @@ namespace PowderMan
             Render();
         }
 
+        /// <summary>
+        /// Writes the cells to the texture. The alpha channel carries how recently each cell had something
+        /// fall through it, which the WorldDistort shader turns into a wobble. It fades a bit every frame.
+        /// </summary>
         void Render()
         {
             var cells = sim.Cells;
+            var fall = sim.Fall;
+            bool distort = worldMaterial != null && fallDistortion > 0f;
+            int keep = Mathf.RoundToInt(distortionFade * 256f);
             int count = 0;
             for (int i = 0; i < cells.Length; i++)
             {
                 byte t = cells[i];
                 if (t != El.Empty) count++;
-                pixels[i] = palette[t * 16 + sim.Shade(i)];
+                var c = palette[t * 16 + sim.Shade(i)];
+                if (worldMaterial != null)
+                {
+                    byte m = fall[i];
+                    c.a = distort ? m : (byte)0;
+                    if (m != 0) fall[i] = (byte)((m * keep) >> 8);
+                }
+                pixels[i] = c;
             }
+            if (worldMaterial != null) worldMaterial.SetFloat("_Strength", distort ? fallDistortion : 0f);
             particleCount = count;
             texture.SetPixels32(pixels);
             texture.Apply(false);
         }
 
-        /// <summary>Keeps the whole grid visible above the toolbar, whatever the window size.</summary>
+        /// <summary>Fits the whole grid into the screen area right of the side strip.</summary>
         void FitCamera()
         {
-            float barFrac = inMenu ? 0f : Mathf.Clamp01(ToolbarHeight() / Screen.height);
-            cam.rect = new Rect(0f, barFrac, 1f, 1f - barFrac);
+            float left = Mathf.Clamp(StripRight / Mathf.Max(1, Screen.width), 0f, 0.9f);
+            cam.rect = new Rect(left, 0f, 1f - left, 1f);
             float aspect = cam.pixelWidth / (float)Mathf.Max(1, cam.pixelHeight);
-            cam.orthographicSize = Mathf.Max(gridHeight / 2f, gridWidth / 2f / aspect);
+            cam.orthographicSize = Mathf.Max(H / 2f, W / 2f / aspect);
         }
 
         void HandleKeys()
@@ -213,8 +312,9 @@ namespace PowderMan
             if (Input.GetKeyDown(KeyCode.F9)) Load();
 
             var bar = ElementDatabase.Toolbar;
+            int pen = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift) ? 1 : 0;
             for (int n = 0; n < 9 && n < bar.Count; n++)
-                if (Input.GetKeyDown(KeyCode.Alpha1 + n)) selected = bar[n];
+                if (Input.GetKeyDown(KeyCode.Alpha1 + n)) pens[pen] = bar[n];
 
             float wheel = Input.mouseScrollDelta.y;
             if (wheel > 0.01f) ChangeBrush(1);
@@ -223,40 +323,89 @@ namespace PowderMan
 
         void ChangeBrush(int delta) => brushSize = Mathf.Clamp(brushSize + delta, 0, maxBrushSize);
 
+        // ------------------------------------------------------------------ drawing (touch + mouse)
+
         void HandlePointer()
         {
-            bool left = Input.GetMouseButton(0), right = Input.GetMouseButton(1);
-            if (!left && !right) { drawing = false; return; }
-
-            Vector2 mouse = Input.mousePosition;
-            bool overUi = mouse.y < ToolbarHeight();
-            if (!drawing)
+            if (Input.touchCount > 0)
             {
-                // Only start a stroke when the press begins over the world, not on the toolbar.
-                if (overUi || !(Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1))) return;
-                drawing = true;
-                lastCell = MouseCell();
+                for (int n = 0; n < Input.touchCount; n++)
+                {
+                    var t = Input.GetTouch(n);
+                    switch (t.phase)
+                    {
+                        case TouchPhase.Began: BeginStroke(t.fingerId, t.position, -1); break;
+                        case TouchPhase.Moved:
+                        case TouchPhase.Stationary: ContinueStroke(t.fingerId, t.position); break;
+                        default: EndStroke(t.fingerId); break;
+                    }
+                }
+                return;
             }
 
-            Vector2Int cell = MouseCell();
-            byte type = right ? El.Empty : selected;
-            bool replace = replaceMode || type == El.Empty;
+            // No fingers down: drop any touch strokes that never got an Ended phase.
+            strokes.RemoveAll(s => s.Id >= 0);
 
-            // Paint along the line from the last position so fast strokes don't leave gaps.
-            int dx = cell.x - lastCell.x, dy = cell.y - lastCell.y;
+            for (int b = 0; b < 2; b++)
+            {
+                int id = MouseId(b);
+                if (Input.GetMouseButtonDown(b)) BeginStroke(id, Input.mousePosition, b);
+                else if (Input.GetMouseButton(b)) ContinueStroke(id, Input.mousePosition);
+                else EndStroke(id);
+            }
+        }
+
+        /// <summary>Starts a stroke if the press is over the world. pen = -1 takes whichever pen is free.</summary>
+        void BeginStroke(int id, Vector2 screenPos, int pen)
+        {
+            if (pickerPen >= 0 || !OverWorld(screenPos)) return;
+            EndStroke(id);
+            if (pen < 0)
+            {
+                if (!PenBusy(0)) pen = 0;
+                else if (!PenBusy(1)) pen = 1;
+                else return; // a third finger does nothing
+            }
+            var cell = ScreenCell(screenPos);
+            strokes.Add(new Stroke { Id = id, Pen = pen, Last = cell });
+            PaintLine(pen, cell, cell);
+        }
+
+        void ContinueStroke(int id, Vector2 screenPos)
+        {
+            int k = strokes.FindIndex(s => s.Id == id);
+            if (k < 0) return;
+            var s = strokes[k];
+            var cell = ScreenCell(screenPos);
+            PaintLine(s.Pen, s.Last, cell);
+            s.Last = cell;
+            strokes[k] = s;
+        }
+
+        void EndStroke(int id) => strokes.RemoveAll(s => s.Id == id);
+
+        bool PenBusy(int pen) => strokes.Exists(s => s.Pen == pen);
+
+        /// <summary>Paints along the line between two cells so fast strokes don't leave gaps.</summary>
+        void PaintLine(int pen, Vector2Int from, Vector2Int to)
+        {
+            byte type = pens[pen];
+            bool replace = replaceMode || type == El.Empty;
+            int dx = to.x - from.x, dy = to.y - from.y;
             int steps = Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy));
             for (int s = 0; s <= steps; s++)
             {
                 float f = steps == 0 ? 1f : s / (float)steps;
-                sim.Paint(Mathf.RoundToInt(lastCell.x + dx * f), Mathf.RoundToInt(lastCell.y + dy * f), brushSize, type, replace);
+                sim.Paint(Mathf.RoundToInt(from.x + dx * f), Mathf.RoundToInt(from.y + dy * f), brushSize, type, replace);
             }
-            lastCell = cell;
         }
 
-        Vector2Int MouseCell()
+        bool OverWorld(Vector2 screenPos) => screenPos.x >= StripRight;
+
+        Vector2Int ScreenCell(Vector2 screenPos)
         {
-            Vector3 w = cam.ScreenToWorldPoint(Input.mousePosition);
-            return new Vector2Int(Mathf.FloorToInt(w.x + gridWidth / 2f), Mathf.FloorToInt(w.y + gridHeight / 2f));
+            Vector3 w = cam.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, 0f));
+            return new Vector2Int(Mathf.FloorToInt(w.x + W / 2f), Mathf.FloorToInt(w.y + H / 2f));
         }
 
         void Save()
@@ -277,9 +426,16 @@ namespace PowderMan
             messageUntil = Time.unscaledTime + 2f;
         }
 
-        // ------------------------------------------------------------------ toolbar (IMGUI)
+        // ------------------------------------------------------------------ UI (IMGUI)
 
-        GUIStyle labelStyle, buttonStyle, infoStyle, titleStyle, menuButtonStyle;
+        static readonly Color32 PanelColor = new Color32(22, 24, 33, 255);
+        static readonly Color32 EdgeColor = new Color32(60, 64, 84, 255);
+        static readonly Color32 ButtonColor = new Color32(44, 47, 62, 255);
+        static readonly Color32 OnColor = new Color32(214, 176, 92, 255);
+        static readonly Color32 EraserColor = new Color32(70, 72, 88, 255);
+        static readonly Color DarkText = new Color(0.08f, 0.08f, 0.1f);
+
+        GUIStyle labelStyle, smallStyle, infoStyle, titleStyle, menuStyle;
 
         /// <summary>UI size multiplier. On phones it's based on DPI so buttons stay finger-sized.</summary>
         float UiScale
@@ -291,108 +447,217 @@ namespace PowderMan
                 return Mathf.Max(1f, s);
             }
         }
+
         float Pad => 6f * UiScale;
-        float Gap => 4f * UiScale;
-        float ButtonW => 86f * UiScale;
-        float ButtonH => 30f * UiScale;
-
-        int ElementButtonsPerRow => Mathf.Max(1, (int)((Screen.width - 2 * Pad + Gap) / (ButtonW + Gap)));
-        int ElementRows => Mathf.CeilToInt((ElementDatabase.Toolbar.Count + 1) / (float)ElementButtonsPerRow);
-
-        /// <summary>Toolbar height in pixels: element rows plus one row of tool buttons.</summary>
-        float ToolbarHeight() => Pad * 2 + (ElementRows + 1) * (ButtonH + Gap) - Gap;
+        float Gap => 5f * UiScale;
+        float StripLeft => Screen.safeArea.xMin;
+        float StripWidth => 96f * UiScale;
+        /// <summary>Right edge of the side strip, in pixels. The world starts here.</summary>
+        float StripRight => StripLeft + StripWidth;
 
         void OnGUI()
         {
             if (sim == null) return;
             MakeStyles();
-            if (inMenu) { DrawMenu(); return; }
 
-            float barH = ToolbarHeight();
-            float top = Screen.height - barH;
-            Fill(new Rect(0, top, Screen.width, barH), new Color32(24, 26, 36, 255));
-            Fill(new Rect(0, top, Screen.width, Mathf.Max(1f, UiScale)), new Color32(60, 64, 84, 255));
-
-            // Element buttons (plus the eraser at the end).
-            var bar = ElementDatabase.Toolbar;
-            int perRow = ElementButtonsPerRow;
-            for (int n = 0; n <= bar.Count; n++)
+            if (inMenu)
             {
-                byte id = n < bar.Count ? bar[n] : El.Empty;
-                var e = ElementDatabase.Table[id];
-                var r = new Rect(Pad + (n % perRow) * (ButtonW + Gap), top + Pad + (n / perRow) * (ButtonH + Gap), ButtonW, ButtonH);
-                Color32 c = id == El.Empty ? new Color32(40, 42, 54, 255) : e.Color;
-                Fill(r, c);
-                if (id == selected) Outline(r, Color.white, 2f * UiScale);
-                if (GUI.Button(r, GUIContent.none, GUIStyle.none)) selected = id;
-                labelStyle.normal.textColor = Luminance(c) > 0.55f ? new Color(0.08f, 0.08f, 0.1f) : Color.white;
-                GUI.Label(r, id == El.Empty ? "Eraser" : e.Name, labelStyle);
+                GUI.enabled = false;
+                DrawStrip();
+                GUI.enabled = true;
+                DrawMenu();
+                return;
             }
 
-            // Tool row.
-            string[] tools =
+            DrawStrip();
+            if (pickerPen >= 0) DrawPicker();
+            else DrawBrushPreview();
+            DrawInfo();
+        }
+
+        /// <summary>The side strip: the two pens, brush size, and the play/speed/replace/clear/menu tools.</summary>
+        void DrawStrip()
+        {
+            float s = UiScale;
+            Fill(new Rect(0, 0, StripRight, Screen.height), PanelColor);
+            Fill(new Rect(StripRight - Mathf.Max(1f, s), 0, Mathf.Max(1f, s), Screen.height), EdgeColor);
+
+            // Rows, in units of one button height: two tall pen buttons, then six tool rows.
+            const float penRows = 1.7f;
+            const int toolRows = 6;
+            float top = Screen.height - Screen.safeArea.yMax + Pad;
+            float avail = Screen.safeArea.height - Pad * 2 - Gap * (toolRows + 2) - Gap * 2;
+            float unit = Mathf.Min(40f * s, avail / (penRows * 2 + toolRows));
+            float x = StripLeft + Pad, w = StripWidth - Pad * 2, y = top;
+
+            for (int p = 0; p < 2; p++)
             {
-                "Brush -", $"Brush {brushSize}", "Brush +",
-                paused ? "Play" : "Pause", "Step", $"Speed x{Speeds[speedIndex]}",
-                replaceMode ? "Replace: on" : "Replace: off", "Clear", "Save", "Load", "Menu",
-            };
-            float rowY = top + Pad + ElementRows * (ButtonH + Gap);
-            float toolW = Mathf.Min(ButtonW * 1.2f, (Screen.width - 2 * Pad - Gap * (tools.Length - 1)) / tools.Length);
-            for (int n = 0; n < tools.Length; n++)
+                var r = new Rect(x, y, w, unit * penRows);
+                if (PenButton(r, p)) pickerPen = pickerPen == p ? -1 : p;
+                y += r.height + Gap;
+            }
+            y += Gap * 2;
+
+            // Brush: [-] size [+]
+            float third = (w - Gap * 2) / 3f;
+            if (Btn(new Rect(x, y, third, unit), "-", ButtonColor)) ChangeBrush(-1);
+            if (Btn(new Rect(x + third + Gap, y, third, unit), brushSize.ToString(), PanelColor)) brushSize = 3;
+            if (Btn(new Rect(x + (third + Gap) * 2, y, third, unit), "+", ButtonColor)) ChangeBrush(1);
+            y += unit + Gap;
+
+            // Pause | Step
+            float half = (w - Gap) / 2f;
+            if (Btn(new Rect(x, y, half, unit), paused ? "Play" : "Pause", paused ? OnColor : ButtonColor)) paused = !paused;
+            if (Btn(new Rect(x + half + Gap, y, half, unit), "Step", ButtonColor)) { paused = true; sim.Step(); }
+            y += unit + Gap;
+
+            if (Btn(new Rect(x, y, w, unit), $"Speed x{Speeds[speedIndex]}", speedIndex == 2 ? ButtonColor : OnColor))
+                speedIndex = (speedIndex + 1) % Speeds.Length;
+            y += unit + Gap;
+
+            if (Btn(new Rect(x, y, w, unit), "Replace", replaceMode ? OnColor : ButtonColor)) replaceMode = !replaceMode;
+            y += unit + Gap;
+
+            if (Btn(new Rect(x, y, w, unit), "Clear", ButtonColor)) sim.Clear();
+            y += unit + Gap;
+
+            if (Btn(new Rect(x, y, w, unit), "Menu", ButtonColor)) OpenMenu();
+        }
+
+        /// <summary>A big swatch showing the pen's element. Tapping it opens the element picker.</summary>
+        bool PenButton(Rect r, int pen)
+        {
+            byte id = pens[pen];
+            Color32 c = id == El.Empty ? EraserColor : ElementDatabase.Table[id].Color;
+            bool clicked = Btn(r, "", c);
+            Color text = Luminance(c) > 0.55f ? DarkText : Color.white;
+
+            smallStyle.normal.textColor = new Color(text.r, text.g, text.b, 0.7f);
+            smallStyle.alignment = TextAnchor.UpperCenter;
+            GUI.Label(new Rect(r.x, r.y + 3f * UiScale, r.width, r.height), $"PEN {pen + 1}", smallStyle);
+            smallStyle.alignment = TextAnchor.MiddleCenter;
+
+            labelStyle.normal.textColor = text;
+            GUI.Label(new Rect(r.x, r.y + r.height * 0.15f, r.width, r.height * 0.85f), ElementName(id), labelStyle);
+
+            if (pickerPen == pen) Outline(r, Color.white, 2f * UiScale);
+            return clicked;
+        }
+
+        /// <summary>A panel of every element. Picks one for pickerPen. Tapping outside closes it.</summary>
+        void DrawPicker()
+        {
+            float s = UiScale;
+            var area = new Rect(StripRight, 0, Screen.width - StripRight, Screen.height);
+            Fill(area, new Color(0f, 0f, 0f, 0.4f));
+
+            var bar = ElementDatabase.Toolbar;
+            int count = bar.Count + 1; // + Eraser
+            float pad = 12f * s, gap = 6f * s, titleH = 34f * s, margin = 10f * s;
+            float bw = 104f * s, bh = 46f * s;
+            int cols = Mathf.Clamp((int)((area.width - margin * 2 - pad * 2 + gap) / (bw + gap)), 1, count);
+            int rows = Mathf.CeilToInt(count / (float)cols);
+            bh = Mathf.Min(bh, (area.height - margin * 2 - pad * 2 - titleH - gap * (rows - 1)) / rows);
+            bw = Mathf.Min(bw * 1.25f, (area.width - margin * 2 - pad * 2 - gap * (cols - 1)) / cols);
+
+            float pw = pad * 2 + cols * (bw + gap) - gap, ph = pad * 2 + titleH + rows * (bh + gap) - gap;
+            var panel = new Rect(area.x + (area.width - pw) / 2f, (area.height - ph) / 2f, pw, ph);
+            Fill(panel, PanelColor);
+            Outline(panel, EdgeColor, Mathf.Max(1f, s));
+
+            infoStyle.alignment = TextAnchor.MiddleLeft;
+            GUI.Label(new Rect(panel.x + pad, panel.y + pad, pw, titleH - gap), $"Pen {pickerPen + 1}: pick an element", infoStyle);
+            infoStyle.alignment = TextAnchor.UpperLeft;
+
+            for (int n = 0; n < count; n++)
             {
-                var r = new Rect(Pad + n * (toolW + Gap), rowY, toolW, ButtonH);
-                if (!GUI.Button(r, tools[n], buttonStyle)) continue;
-                switch (n)
+                byte id = n < bar.Count ? bar[n] : El.Empty;
+                var r = new Rect(panel.x + pad + (n % cols) * (bw + gap), panel.y + pad + titleH + (n / cols) * (bh + gap), bw, bh);
+                Color32 c = id == El.Empty ? EraserColor : ElementDatabase.Table[id].Color;
+                if (Btn(r, ElementName(id), c))
                 {
-                    case 0: ChangeBrush(-1); break;
-                    case 1: brushSize = 3; break;
-                    case 2: ChangeBrush(1); break;
-                    case 3: paused = !paused; break;
-                    case 4: paused = true; sim.Step(); break;
-                    case 5: speedIndex = (speedIndex + 1) % Speeds.Length; break;
-                    case 6: replaceMode = !replaceMode; break;
-                    case 7: sim.Clear(); break;
-                    case 8: Save(); break;
-                    case 9: Load(); break;
-                    case 10: OpenMenu(); break;
+                    pens[pickerPen] = id;
+                    pickerPen = -1;
+                }
+                if (pickerPen >= 0 && id == pens[pickerPen]) Outline(r, Color.white, 2f * s);
+
+                // Small badge saying which pens have this element.
+                string badge = (pens[0] == id ? "1" : "") + (pens[1] == id ? "2" : "");
+                if (badge.Length > 0)
+                {
+                    smallStyle.normal.textColor = Luminance(c) > 0.55f ? DarkText : Color.white;
+                    smallStyle.alignment = TextAnchor.UpperRight;
+                    GUI.Label(new Rect(r.x, r.y + 2f * s, r.width - 4f * s, r.height), badge, smallStyle);
+                    smallStyle.alignment = TextAnchor.MiddleCenter;
                 }
             }
 
-            DrawBrushPreview(top);
+            var ev = Event.current;
+            if (ev.type == EventType.MouseDown && !panel.Contains(ev.mousePosition) && ev.mousePosition.x >= StripRight)
+            {
+                pickerPen = -1;
+                ev.Use();
+            }
+        }
 
-            // Info line.
-            Vector2Int cell = MouseCell();
-            string hover = sim.InBounds(cell.x, cell.y) && Input.mousePosition.y >= barH
-                ? ElementDatabase.Table[sim.Get(cell.x, cell.y)].Name + "  ·  "
-                : "";
+        void DrawInfo()
+        {
+            string hover = "";
+            if (Input.mousePresent && Input.touchCount == 0 && OverWorld(Input.mousePosition))
+            {
+                Vector2Int cell = ScreenCell(Input.mousePosition);
+                if (sim.InBounds(cell.x, cell.y)) hover = ElementName(sim.Get(cell.x, cell.y)) + "  ·  ";
+            }
             string info = $"{hover}{particleCount:N0} particles  ·  {fps:0} fps{(paused ? "  ·  PAUSED" : "")}";
             if (Time.unscaledTime < messageUntil) info += "  ·  " + message;
-            GUI.Label(new Rect(Pad + 2, Pad, Screen.width, ButtonH), info, infoStyle);
+            GUI.Label(new Rect(StripRight + Pad + 2, Pad, Screen.width, 30f * UiScale), info, infoStyle);
         }
 
         void DrawMenu()
         {
             float s = UiScale;
-            Fill(new Rect(0, 0, Screen.width, Screen.height), new Color(0f, 0f, 0f, 0.45f));
+            Fill(new Rect(0, 0, Screen.width, Screen.height), new Color(0f, 0f, 0f, 0.55f));
 
-            float w = 300f * s, bh = 44f * s, gap = 10f * s;
             bool hasSave = File.Exists(SavePath);
-            int buttons = 2 + (hasSave ? 1 : 0);
-            float titleH = 70f * s;
-            float total = titleH + gap * 2 + buttons * (bh + gap);
-            float x = (Screen.width - w) / 2f, y = (Screen.height - total) / 2f;
+            var items = new List<(string label, System.Action action)>();
+            if (started)
+            {
+                items.Add(("Resume", () => Play()));
+                items.Add(("Save", () => Save()));
+                if (hasSave) items.Add(("Load save", () => { Load(); Play(); }));
+                items.Add(("New sandbox", () => { sim.Clear(); Play(); }));
+            }
+            else
+            {
+                items.Add(("Play", () => Play()));
+                if (hasSave) items.Add(("Load save", () => { Play(); Load(); }));
+            }
+            items.Add(("Quit", () => Application.Quit()));
+
+            float titleH = 64f * s, subH = 24f * s, hintH = 40f * s;
+            float gap = 10f * s;
+            float bh = Mathf.Min(48f * s, (Screen.height - titleH - subH - hintH - gap * (items.Count + 3)) / items.Count);
+            float w = 300f * s;
+            float total = titleH + subH + gap * 2 + items.Count * (bh + gap) + hintH;
+            float x = (Screen.width - w) / 2f, y = Mathf.Max(0f, (Screen.height - total) / 2f);
 
             GUI.Label(new Rect(0, y, Screen.width, titleH), "POWDER MAN", titleStyle);
-            y += titleH + gap * 2;
+            y += titleH;
+            infoStyle.alignment = TextAnchor.MiddleCenter;
+            GUI.Label(new Rect(0, y, Screen.width, subH), "a falling-sand sandbox", infoStyle);
+            y += subH + gap * 2;
 
-            if (GUI.Button(new Rect(x, y, w, bh), started ? "Resume" : "Play", menuButtonStyle)) Play();
-            y += bh + gap;
-            if (hasSave)
+            foreach (var (label, action) in items)
             {
-                if (GUI.Button(new Rect(x, y, w, bh), "Load save", menuButtonStyle)) { Play(); Load(); }
+                bool primary = label == "Resume" || label == "Play";
+                if (Btn(new Rect(x, y, w, bh), label, primary ? OnColor : ButtonColor, menuStyle)) action();
                 y += bh + gap;
             }
-            if (GUI.Button(new Rect(x, y, w, bh), "Quit", menuButtonStyle)) Application.Quit();
+
+            string hint = Time.unscaledTime < messageUntil ? message
+                : Application.isMobilePlatform ? "Draw with two fingers at once to use both pens"
+                : "Left mouse: pen 1   ·   Right mouse: pen 2   ·   Wheel: brush size";
+            GUI.Label(new Rect(0, y, Screen.width, hintH), hint, infoStyle);
 
             var version = new Rect(0, Screen.height - Pad - 24f * s, Screen.width - Pad * 2, 24f * s);
             infoStyle.alignment = TextAnchor.LowerRight;
@@ -400,30 +665,46 @@ namespace PowderMan
             infoStyle.alignment = TextAnchor.UpperLeft;
         }
 
-        void DrawBrushPreview(float barTop)
+        void DrawBrushPreview()
         {
             Vector2 mouse = Input.mousePosition;
-            if (mouse.y < ToolbarHeight() || Input.touchCount > 0) return;
-            Vector2Int cell = MouseCell();
-            Vector3 centre = cam.WorldToScreenPoint(new Vector3(cell.x - gridWidth / 2f + 0.5f, cell.y - gridHeight / 2f + 0.5f, 0f));
+            if (!Input.mousePresent || Input.touchCount > 0 || !OverWorld(mouse)) return;
+            Vector2Int cell = ScreenCell(mouse);
+            Vector3 centre = cam.WorldToScreenPoint(new Vector3(cell.x - W / 2f + 0.5f, cell.y - H / 2f + 0.5f, 0f));
             float cellPx = cam.pixelHeight / (2f * cam.orthographicSize);
             float size = (brushSize * 2 + 1) * cellPx;
             var r = new Rect(centre.x - size / 2f, Screen.height - centre.y - size / 2f, size, size);
-            if (r.yMax > barTop) r.yMax = barTop;
+            if (r.xMin < StripRight) r.xMin = StripRight;
             Outline(r, new Color(1f, 1f, 1f, 0.5f), 1f);
         }
+
+        /// <summary>A flat button: coloured box, centred label, lighter while pressed.</summary>
+        bool Btn(Rect r, string text, Color32 color, GUIStyle style = null)
+        {
+            bool down = GUI.enabled && Input.GetMouseButton(0) && r.Contains(Event.current.mousePosition);
+            Fill(r, down ? Color.Lerp(color, Color.white, 0.25f) : (Color)color);
+            if (text.Length > 0)
+            {
+                style ??= labelStyle;
+                style.normal.textColor = Luminance(color) > 0.55f ? DarkText : Color.white;
+                GUI.Label(r, text, style);
+            }
+            return GUI.Button(r, GUIContent.none, GUIStyle.none);
+        }
+
+        static string ElementName(byte id) => id == El.Empty ? "Eraser" : ElementDatabase.Table[id].Name;
 
         void MakeStyles()
         {
             int font = Mathf.RoundToInt(13 * UiScale);
             if (labelStyle != null && labelStyle.fontSize == font) return;
-            labelStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = font, fontStyle = FontStyle.Bold, clipping = TextClipping.Clip };
-            buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = font };
+            labelStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = font, fontStyle = FontStyle.Bold, clipping = TextClipping.Clip, padding = new RectOffset(0, 0, 0, 0) };
+            smallStyle = new GUIStyle(labelStyle) { fontSize = Mathf.RoundToInt(10 * UiScale) };
             infoStyle = new GUIStyle(GUI.skin.label) { fontSize = font };
             infoStyle.normal.textColor = new Color(0.85f, 0.87f, 0.92f);
             titleStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = Mathf.RoundToInt(52 * UiScale), fontStyle = FontStyle.Bold };
             titleStyle.normal.textColor = ElementDatabase.Table[El.Sand].Color;
-            menuButtonStyle = new GUIStyle(GUI.skin.button) { fontSize = Mathf.RoundToInt(20 * UiScale), fontStyle = FontStyle.Bold };
+            menuStyle = new GUIStyle(labelStyle) { fontSize = Mathf.RoundToInt(20 * UiScale) };
         }
 
         static void Fill(Rect r, Color c)
