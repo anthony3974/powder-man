@@ -32,7 +32,7 @@ namespace PowderMan
 
         [Header("Brush")]
         [SerializeField] int brushSize = 3;
-        [SerializeField] int maxBrushSize = 30;
+        [SerializeField] int maxBrushSize = 15;
         [Tooltip("Powders, liquids and gases come out as a spray of separate grains: the chance each empty cell " +
                  "under the brush gets one, per frame. 1 = solid blobs. Solids are always drawn solid.")]
         [Range(0.02f, 1f)] [SerializeField] float sprayDensity = 0.12f;
@@ -466,7 +466,7 @@ namespace PowderMan
         static readonly Color32 EraserColor = new Color32(70, 72, 88, 255);
         static readonly Color DarkText = new Color(0.08f, 0.08f, 0.1f);
 
-        GUIStyle labelStyle, smallStyle, infoStyle, titleStyle, menuStyle, helpNameStyle, helpTagStyle, helpBodyStyle;
+        GUIStyle labelStyle, stripBtnStyle, smallStyle, infoStyle, titleStyle, menuStyle, helpNameStyle, helpTagStyle, helpBodyStyle;
 
         /// <summary>UI size multiplier. On phones it's based on DPI so buttons stay finger-sized.</summary>
         float UiScale
@@ -514,9 +514,9 @@ namespace PowderMan
             Fill(new Rect(0, 0, StripRight, Screen.height), PanelColor);
             Fill(new Rect(StripRight - Mathf.Max(1f, s), 0, Mathf.Max(1f, s), Screen.height), EdgeColor);
 
-            // Rows, in units of one button height: two tall slot buttons, then six tool rows.
+            // Rows, in units of one button height: two tall slot buttons, then seven tool rows.
             const float penRows = 1.7f;
-            const int toolRows = 6;
+            const int toolRows = 7;
             float top = Screen.height - Screen.safeArea.yMax + Pad;
             float avail = Screen.safeArea.height - Pad * 2 - Gap * (toolRows + 2) - Gap * 2;
             float unit = Mathf.Min(40f * s, avail / (penRows * 2 + toolRows));
@@ -532,28 +532,28 @@ namespace PowderMan
 
             // Brush: [-] size [+]
             float third = (w - Gap * 2) / 3f;
-            if (Btn(new Rect(x, y, third, unit), "-", ButtonColor)) ChangeBrush(-1);
-            if (Btn(new Rect(x + third + Gap, y, third, unit), brushSize.ToString(), PanelColor)) brushSize = 3;
-            if (Btn(new Rect(x + (third + Gap) * 2, y, third, unit), "+", ButtonColor)) ChangeBrush(1);
+            if (Btn(new Rect(x, y, third, unit), "-", ButtonColor, stripBtnStyle)) ChangeBrush(-1);
+            if (Btn(new Rect(x + third + Gap, y, third, unit), brushSize.ToString(), PanelColor, stripBtnStyle)) brushSize = 3;
+            if (Btn(new Rect(x + (third + Gap) * 2, y, third, unit), "+", ButtonColor, stripBtnStyle)) ChangeBrush(1);
             y += unit + Gap;
 
-            // Pause | Step
-            float half = (w - Gap) / 2f;
-            if (Btn(new Rect(x, y, half, unit), paused ? "Play" : "Pause", paused ? OnColor : ButtonColor)) paused = !paused;
-            if (Btn(new Rect(x + half + Gap, y, half, unit), "Step", ButtonColor)) { paused = true; sim.Step(); }
+            if (Btn(new Rect(x, y, w, unit), paused ? "Play" : "Pause", paused ? OnColor : ButtonColor, stripBtnStyle)) paused = !paused;
             y += unit + Gap;
 
-            if (Btn(new Rect(x, y, w, unit), $"Speed x{Speeds[speedIndex]}", speedIndex == 2 ? ButtonColor : OnColor))
+            if (Btn(new Rect(x, y, w, unit), "Step", ButtonColor, stripBtnStyle)) { paused = true; sim.Step(); }
+            y += unit + Gap;
+
+            if (Btn(new Rect(x, y, w, unit), $"Speed x{Speeds[speedIndex]}", speedIndex == 2 ? ButtonColor : OnColor, stripBtnStyle))
                 speedIndex = (speedIndex + 1) % Speeds.Length;
             y += unit + Gap;
 
-            if (Btn(new Rect(x, y, w, unit), "Replace", replaceMode ? OnColor : ButtonColor)) replaceMode = !replaceMode;
+            if (Btn(new Rect(x, y, w, unit), "Replace", replaceMode ? OnColor : ButtonColor, stripBtnStyle)) replaceMode = !replaceMode;
             y += unit + Gap;
 
-            if (Btn(new Rect(x, y, w, unit), "Clear", ButtonColor)) sim.Clear();
+            if (Btn(new Rect(x, y, w, unit), "Clear", ButtonColor, stripBtnStyle)) sim.Clear();
             y += unit + Gap;
 
-            if (Btn(new Rect(x, y, w, unit), "Menu", ButtonColor)) OpenMenu();
+            if (Btn(new Rect(x, y, w, unit), "Menu", ButtonColor, stripBtnStyle)) OpenMenu();
         }
 
         /// <summary>
@@ -830,6 +830,7 @@ namespace PowderMan
             int font = Mathf.RoundToInt(13 * UiScale);
             if (labelStyle != null && labelStyle.fontSize == font) return;
             labelStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = font, fontStyle = FontStyle.Bold, clipping = TextClipping.Clip, padding = new RectOffset(0, 0, 0, 0) };
+            stripBtnStyle = new GUIStyle(labelStyle) { wordWrap = false };
             smallStyle = new GUIStyle(labelStyle) { fontSize = Mathf.RoundToInt(10 * UiScale) };
             infoStyle = new GUIStyle(GUI.skin.label) { fontSize = font };
             infoStyle.normal.textColor = new Color(0.85f, 0.87f, 0.92f);

@@ -244,7 +244,7 @@ MonoBehaviour:
   gridHeight: 180
   ticksPerSecond: 60
   brushSize: 3
-  maxBrushSize: 30
+  maxBrushSize: 15
 --- !u!4 &626149594
 Transform:
   m_ObjectHideFlags: 0

@@ -327,12 +327,12 @@ namespace PowderMan
         }
 
         /// <summary>
-        /// Shoots down up to 8 cells a tick, zig-zagging and leaving a short-lived Spark trail.
+        /// Shoots down up to 4 cells a tick, zig-zagging and leaving a short-lived Spark trail.
         /// Passes through air and gases that don't burn, and strikes the first thing it hits.
         /// </summary>
         void UpdateLightning(int i, int x, int y)
         {
-            for (int s = 0; s < 8; s++)
+            for (int s = 0; s < 4; s++)
             {
                 int nx = x + (int)(Next() % 3) - 1, ny = y - 1;
                 if (!InBounds(nx, ny)) { SetIndex(i, El.Spark); return; }

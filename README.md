@@ -2,7 +2,7 @@
 
 A falling-sand sandbox for Android and desktop, made in Unity. Pour sand, water, lava and more onto the screen and watch them fall, flow, burn, melt and explode into each other.
 
-- **Version:** 1.6 (build 7). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
+- **Version:** 1.7 (build 8). It lives in `Assets/Scripts/BuildInfo.cs` and shows on the home menu.
 - **Android id:** `com.Tony3974.PowderMan`, released on the F-Droid repo at fdroid.tonycad.com.
 - **Unity:** 6000.0.85f1, built-in render pipeline, no extra packages.
 

@@ -70,16 +70,16 @@ Also changed with this batch: burning wood and plants (Ember) now leave Ash or S
 
 ## From voice note (22 Nov 2026)
 
-- [ ] Slow down Lightning to about half its current speed. The transcript says "Learning is way too fast," probably a mishearing of "Lightning."
-- [ ] Side strip: the Pause button text sits high and squished, not centred. Centre it.
-- [ ] Make Pause and Step full-width buttons in the side strip, since there's plenty of vertical space.
-- [ ] Change the max pen size to 15.
+- [x] Slow down Lightning to about half its current speed. The transcript says "Learning is way too fast," probably a mishearing of "Lightning." (v1.7)
+- [x] Side strip: the Pause button text sits high and squished, not centred. Centre it. (v1.7)
+- [x] Make Pause and Step full-width buttons in the side strip, since there's plenty of vertical space. (v1.7)
+- [x] Change the max pen size to 15. (v1.7)
 - [ ] Scene name: he doesn't like the current name, but then said "never mind". Left alone unless he raises it again.
 - [ ] Help screen: he may have feedback on it later ("if I have an issue with the help, I'll come back").
 
 ## Known issues
 
-- [ ] The side strip is narrow enough at small sizes that "Pause" wraps onto two lines.
+- [x] The side strip is narrow enough at small sizes that "Pause" wraps onto two lines. (v1.7)
 
 ## Later ideas
 
