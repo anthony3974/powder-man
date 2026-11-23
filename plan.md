@@ -68,6 +68,15 @@ Also changed with this batch: burning wood and plants (Ember) now leave Ash or S
 - [ ] Balance: how fast things spread (Moss, Fungus, Ants breeding), and how much Methane Mud lets off.
 - [ ] Help screen: text size and scrolling by finger on a real phone (checked on desktop at phone-like sizes in v1.6).
 
+## From voice note (22 Nov 2026)
+
+- [ ] Slow down Lightning to about half its current speed. The transcript says "Learning is way too fast," probably a mishearing of "Lightning."
+- [ ] Side strip: the Pause button text sits high and squished, not centred. Centre it.
+- [ ] Make Pause and Step full-width buttons in the side strip, since there's plenty of vertical space.
+- [ ] Change the max pen size to 15.
+- [ ] Scene name: he doesn't like the current name, but then said "never mind". Left alone unless he raises it again.
+- [ ] Help screen: he may have feedback on it later ("if I have an issue with the help, I'll come back").
+
 ## Known issues
 
 - [ ] The side strip is narrow enough at small sizes that "Pause" wraps onto two lines.
