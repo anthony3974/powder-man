@@ -20,6 +20,18 @@ namespace PowderMan
         readonly byte[] shade;  // 0..15, picks a colour variant
         readonly int[] stamp;   // tick number a cell last moved/changed, so nothing moves twice per tick
         int tick;
+
+        // Electricity. Each Lightning strike on a conductor starts a charge (a numbered wave) that runs through touching
+        // Electric cells, ChargeStepsPerTick cells a tick. Each cell remembers the last wave it carried and the step it
+        // carried it, so a wave goes through each cell once and always ends, even in moving Salt Water.
+        readonly int[] charged, chargeWave;
+        int chargeStep, waves;
+        List<int> chargeFront = new List<int>(), chargeSpreading = new List<int>();
+        const int ChargeStepsPerTick = 4, NoCharge = int.MinValue / 2;
+        const float ChargeHeat = 30f;                   // degrees a cell warms up each time a charge passes through
+        /// <summary>For how many charge steps (4 a tick) a cell shows as lit up after a charge passes.</summary>
+        public const int ChargeGlowSteps = 24;
+        static readonly int[] Side = { 1, 3, 4, 6 };   // the 4 neighbours (below, left, right, above) in DX/DY
         // Portal Out cells seen last tick (where Portal In sends things), and the ones being collected this tick.
         List<int> exitPortals = new List<int>(), nextExitPortals = new List<int>();
         uint rng = 2463534242u;
@@ -62,6 +74,9 @@ namespace PowderMan
             Cells = new byte[n];
             Temp = new float[n];
             Array.Fill(Temp, Room);
+            charged = new int[n];
+            Array.Fill(charged, NoCharge);
+            chargeWave = new int[n];
             life = new byte[n];
             shade = new byte[n];
             stamp = new int[n];
@@ -76,6 +91,9 @@ namespace PowderMan
             Array.Clear(Cells, 0, Cells.Length);
             Array.Clear(life, 0, life.Length);
             Array.Fill(Temp, Room);
+            Array.Fill(charged, NoCharge);
+            Array.Clear(chargeWave, 0, chargeWave.Length);
+            chargeFront.Clear();
         }
 
         public void Set(int x, int y, byte type)
@@ -121,6 +139,7 @@ namespace PowderMan
                 else
                     for (int x = Width - 1; x >= 0; x--) UpdateCell(x, y);
             }
+            UpdateCharge();
             if (tick % HeatEvery == 0) UpdateHeat();
         }
 
@@ -354,6 +373,60 @@ namespace PowderMan
             return t;
         }
 
+        // ------------------------------------------------------------------ electricity
+
+        /// <summary>How many charge steps ago cell i last carried a charge (big = never). PowderGame lights it up while small.</summary>
+        public int ChargeAge(int i) => chargeStep - charged[i];
+
+        /// <summary>Starts a new charge in cell i, if it carries electricity.</summary>
+        public void Charge(int i)
+        {
+            if (E[Cells[i]].Electric) Carry(i, ++waves);
+        }
+
+        /// <summary>Cell i carries wave w: lights up, warms a little, and passes it on next step.</summary>
+        void Carry(int i, int w)
+        {
+            chargeWave[i] = w;
+            charged[i] = chargeStep;
+            Temp[i] += ChargeHeat;
+            chargeFront.Add(i);
+        }
+
+        /// <summary>Moves every charge on one cell at a time, ChargeStepsPerTick times.</summary>
+        void UpdateCharge()
+        {
+            for (int s = 0; s < ChargeStepsPerTick; s++)
+            {
+                chargeStep++;
+                if (chargeFront.Count == 0) continue;
+                (chargeFront, chargeSpreading) = (chargeSpreading, chargeFront);
+                chargeFront.Clear();
+                foreach (int i in chargeSpreading)
+                    if (charged[i] == chargeStep - 1 && E[Cells[i]].Electric) SpreadCharge(i);
+            }
+        }
+
+        /// <summary>
+        /// A charged cell passes the charge to Electric neighbours, and shocks the rest: things that burn may
+        /// catch fire, and Ants and Worms are fried to Ash.
+        /// </summary>
+        void SpreadCharge(int i)
+        {
+            int x = i % Width, y = i / Width;
+            foreach (int k in Side)
+            {
+                int nx = x + DX[k], ny = y + DY[k];
+                if (!InBounds(nx, ny)) continue;
+                int j = ny * Width + nx;
+                byte o = Cells[j];
+                var oe = E[o];
+                if (oe.Electric) { if (chargeWave[j] != chargeWave[i]) Carry(j, chargeWave[i]); }
+                else if (o == El.Ant || o == El.Worm) SetIndex(j, El.Ash);
+                else if (oe.Flammability > 0f && Rand01() < oe.Flammability * 0.5f) Ignite(nx, ny, j, oe);
+            }
+        }
+
         // ------------------------------------------------------------------ special elements
         // Elements that need more than the Element settings and reactions. Each gets a branch here.
         // `life` is spare for elements that don't decay, so several of them keep their own state in it.
@@ -461,9 +534,10 @@ namespace PowderMan
             }
         }
 
-        /// <summary>Lightning hitting (x, y): sets it alight if it burns, and fuses nearby Sand into Glass.</summary>
+        /// <summary>Lightning hitting (x, y): electrifies Metal and Salt Water, sets it alight if it burns, and fuses nearby Sand into Glass.</summary>
         void Strike(int x, int y, int i, Element e)
         {
+            if (e.Electric) Charge(i);
             if (e.Flammability > 0f) Ignite(x, y, i, e);
             for (int dy = -2; dy <= 2; dy++)
             for (int dx = -2; dx <= 2; dx++)
@@ -674,6 +748,8 @@ namespace PowderMan
             (life[a], life[b]) = (life[b], life[a]);
             (shade[a], shade[b]) = (shade[b], shade[a]);
             (Temp[a], Temp[b]) = (Temp[b], Temp[a]);
+            (charged[a], charged[b]) = (charged[b], charged[a]);
+            (chargeWave[a], chargeWave[b]) = (chargeWave[b], chargeWave[a]);
             stamp[a] = tick;
             stamp[b] = tick;
         }
@@ -688,6 +764,8 @@ namespace PowderMan
             if (Cells[i] == El.Empty) Temp[i] = e.Temperature;
             else if (type != El.Empty) Temp[i] = FitTemp(e, Temp[i]);
             Cells[i] = type;
+            charged[i] = NoCharge;
+            chargeWave[i] = 0;
             life[i] = e.LifeMax > 0 ? (byte)(e.LifeMin + (int)(Next() % (uint)(Mathf.Max(1, e.LifeMax - e.LifeMin + 1)))) : (byte)0;
             shade[i] = (byte)(Next() & 15);
             stamp[i] = tick;

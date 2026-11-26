@@ -62,6 +62,10 @@ Every cell has a temperature, air included, and it moves with the cell. Room tem
 
 The heat pass runs every second tick, in `UpdateHeat` in `Simulation.cs`. Saves keep the elements but not their temperatures.
 
+## Electricity
+
+Metal, Molten Metal and Salt Water carry electricity. When Lightning hits one, a flash runs through every conductor touching it, 4 cells a tick, lighting each cell up white as it passes. Each cell it passes warms by 30°, and the cells next to it get shocked: things that burn may catch fire (explosives go off) and Ants and Worms are fried to Ash. Each strike is a separate charge that goes through each cell once, so it always ends, even in moving Salt Water. It's in `Simulation.cs` (`Charge`, `UpdateCharge`), and an element carries it when `Electric` is set.
+
 ## Elements
 
 | Element | Kind | What it does |
@@ -91,11 +95,11 @@ The heat pass runs every second tick, in `UpdateHeat` in `Simulation.cs`. Saves 
 | Clay | solid | Fire or Lava bakes it into Brick. Water slowly softens it into Mud. |
 | Brick | solid | Baked Clay. Mostly holds up to Acid. |
 | Salt | powder | Melts Ice and Snow. Dissolves in Water into Salt Water. |
-| Salt Water | liquid | Heavier than Water, doesn't freeze, leaves Salt when it boils, rusts Metal faster. |
+| Salt Water | liquid | Heavier than Water, doesn't freeze, leaves Salt when it boils, rusts Metal faster. Carries electricity. |
 | Ash | powder | Left by burnt Wood and Plant. Floats on Water. |
 | Obsidian | solid | Lava touching Ice. Acid-proof. |
-| Metal | solid | Carries heat fast. Lava melts it into Molten Metal. Water rusts it. Acid on it gives off Hydrogen. |
-| Molten Metal | liquid | Hot, lights things, sets back into Metal below 1150° and glows as it cools. |
+| Metal | solid | Carries heat and electricity. Lava melts it into Molten Metal. Water rusts it. Acid on it gives off Hydrogen. |
+| Molten Metal | liquid | Hot, lights things, carries electricity, sets back into Metal below 1150° and glows as it cools. |
 | Rust | powder | Wet Metal crumbles into it. |
 | Coal | powder | Hard to light, then burns for a long time and leaves Ash. |
 | Thermite | powder | Burns white-hot and melts through Metal, Stone, Brick and Glass. Water doesn't stop it. |
@@ -107,7 +111,7 @@ The heat pass runs every second tick, in `UpdateHeat` in `Simulation.cs`. Saves 
 | Ant | creature | Walks, climbs walls and digs through soft ground. Eats Seeds and breeds on Plants. Drowns and burns. |
 | Worm | creature | Wriggles through Dirt, Mud and Sand. Turns Ash into Dirt. |
 | Cloud | gas | Hangs at the top for a couple of minutes, raining. Gathers Steam. |
-| Lightning | bolt | Zig-zags down, lights what it hits, fuses Sand into Glass. |
+| Lightning | bolt | Zig-zags down, lights what it hits, fuses Sand into Glass, electrifies Metal and Salt Water. |
 | Methane | gas | Rises. Explodes when lit. |
 | Hydrogen | gas | Very light. Goes pop when lit. |
 | Poison Gas | gas | Kills Plants, Seeds, Vines, Moss, Ants and Worms. Water soaks it up. |
@@ -160,13 +164,14 @@ The main `Element` settings:
 | `Latent` | Extra heat, in degrees, it soaks up at `HeatsAt` before it changes (uses the cell's life, so not for things that decay) |
 | `CoolsAt`, `CoolsInto` | Colder than `CoolsAt` it becomes `CoolsInto` |
 | `IgnitesAt` | Things that burn catch fire on their own above this (default 300) |
+| `Electric` | Carries electricity (Metal, Molten Metal, Salt Water) |
 | `Indestructible` | Explosions, Acid, Void, Antimatter and Black Holes can't touch it |
 | `HiddenFromToolbar` | Not in the element picker |
 | `Category` | Which picker tab it's in (default: the `Group` it was added under) |
 
 Other files:
 
-- **`Assets/Scripts/Simulation.cs`**: the grid and the rules for movement, burning, explosions, reactions, temperature, save/load, and the elements that need their own code (Cloner, Bouncy Ball, Nitro, Bubble, Lightning, Black Hole, Portals, Ant, Worm, Vine and sprouting Seeds, in `UpdateSpecial`).
+- **`Assets/Scripts/Simulation.cs`**: the grid and the rules for movement, burning, explosions, reactions, temperature, electricity, save/load, and the elements that need their own code (Cloner, Bouncy Ball, Nitro, Bubble, Lightning, Black Hole, Portals, Ant, Worm, Vine and sprouting Seeds, in `UpdateSpecial`).
 - **`Assets/Scripts/PowderGame.cs`**: rendering (including the glow of hot things and Heat view), input (touch, mouse, keys), the side strip, the element picker and its tabs, the home menu and its demo. Grid height (180), tick rate, brush limits and spray density are in the Inspector on the `Powder Game` object. Turn off **Fit Width To Screen** there to use a fixed **Grid Width** instead.
 - **`Assets/Scripts/ElementHelp.cs`**: the Help screen text for each element. Update it when you change what an element does.
 - **`Assets/Scripts/BuildInfo.cs`**: the version.

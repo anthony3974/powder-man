@@ -211,6 +211,7 @@ namespace PowderMan
 
         // ---- Temperature colours. Things hotter than GlowFrom glow red, then orange, then yellow-white.
         const float GlowFrom = 450f, GlowTo = 1450f;
+        static readonly Color32 ElectricColor = new Color32(235, 245, 255, 255);
 
         /// <summary>Heat view colours: blue for cold, dark at room temperature, then purple, red, orange, yellow, white.</summary>
         static readonly (float temp, Color32 color)[] HeatStops =
@@ -342,6 +343,9 @@ namespace PowderMan
                     c = Color32.Lerp(c, g, g.a / 255f);
                     c.a = 255;
                 }
+                // Electricity passing through: a bright flash that fades.
+                int age = sim.ChargeAge(i);
+                if ((uint)age < Simulation.ChargeGlowSteps) c = Color32.Lerp(c, ElectricColor, 1f - age / (float)Simulation.ChargeGlowSteps);
                 pixels[i] = c;
             }
             particleCount = count;

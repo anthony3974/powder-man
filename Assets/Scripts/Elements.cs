@@ -171,6 +171,9 @@ namespace PowderMan
         /// <summary>Things that burn catch fire on their own when hotter than this. 0 = 300.</summary>
         public float IgnitesAt;
 
+        /// <summary>Carries electricity: a charge (from Lightning) runs through every touching cell that also does.</summary>
+        public bool Electric;
+
         /// <summary>The element picker tab it's in (one of ElementDatabase.Categories). Unset = the Group it was added under.</summary>
         public string Category;
     }
@@ -261,17 +264,17 @@ namespace PowderMan
             Add(El.Clay, new Element { Name = "Clay", Kind = Kind.Solid, Color = Hex("#b87d5b"), Color2 = Hex("#a06a4a"), Conductivity = 0.1f, HeatsAt = 500f, HeatsInto = El.Brick, Latent = 100f });
             Add(El.Brick, new Element { Name = "Brick", Kind = Kind.Solid, Color = Hex("#a8432f"), Color2 = Hex("#8a3424"), HeatsAt = 1400f, HeatsInto = El.Lava, Latent = 200f, Conductivity = 0.1f });
             Add(El.Salt, new Element { Name = "Salt", Kind = Kind.Powder, Color = Hex("#f2f0ea"), Color2 = Hex("#d8d4cb"), Density = 17, Conductivity = 0.25f });
-            Add(El.SaltWater, new Element { Name = "Salt Water", Kind = Kind.Liquid, Color = Hex("#3a9cc4"), Color2 = Hex("#318aad"), Density = 11, Spread = 5, Conductivity = 0.6f, HeatsAt = 105f, HeatsInto = El.Steam, Latent = 400f, HeatsChance = 0.75f, HeatsElse = El.Salt });
+            Add(El.SaltWater, new Element { Name = "Salt Water", Kind = Kind.Liquid, Color = Hex("#3a9cc4"), Color2 = Hex("#318aad"), Density = 11, Spread = 5, Electric = true, Conductivity = 0.6f, HeatsAt = 105f, HeatsInto = El.Steam, Latent = 400f, HeatsChance = 0.75f, HeatsElse = El.Salt });
             Add(El.Ash, new Element { Name = "Ash", Kind = Kind.Powder, Color = Hex("#9a9a9e"), Color2 = Hex("#7c7c82"), Density = 5, Scatter = 0.4f, Conductivity = 0.02f });
             Add(El.Obsidian, new Element { Name = "Obsidian", Kind = Kind.Solid, Color = Hex("#2b2238"), Color2 = Hex("#1a1424"), Conductivity = 0.01f, HeatsAt = 1400f, HeatsInto = El.Lava, Latent = 200f });
 
             // ---- Metals and heat
             Group("Heat");
-            Add(El.Metal, new Element { Name = "Metal", Kind = Kind.Solid, Color = Hex("#a9b3c2"), Color2 = Hex("#8a94a3"), Conductivity = 1f, HeatsAt = 1300f, HeatsInto = El.MoltenMetal, Latent = 200f });
+            Add(El.Metal, new Element { Name = "Metal", Kind = Kind.Solid, Color = Hex("#a9b3c2"), Color2 = Hex("#8a94a3"), Electric = true, Conductivity = 1f, HeatsAt = 1300f, HeatsInto = El.MoltenMetal, Latent = 200f });
             Add(El.MoltenMetal, new Element
             {
                 Name = "Molten Metal", Kind = Kind.Liquid, Color = Hex("#ffe08a"), Color2 = Hex("#ff9a3c"), Density = 20, Spread = 2,
-                MoveChance = 0.5f, Heat = 0.6f, Flicker = true,
+                MoveChance = 0.5f, Heat = 0.6f, Flicker = true, Electric = true,
                 LifeMin = 200, LifeMax = 255, DecaysInto = El.Metal, DecayChance = 0.3f, DecaysElse = El.MoltenMetal,
                 Temperature = 1500f, Conductivity = 0.8f, CoolsAt = 1150f, CoolsInto = El.Metal,
             });

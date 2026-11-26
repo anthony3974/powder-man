@@ -195,6 +195,7 @@ namespace PowderMan
                 "Never freezes, and melts Ice it touches.",
                 "Boils away in <b>Fire</b> or <b>Lava</b> and leaves Salt behind.",
                 "Rusts <b>Metal</b> much faster than plain Water.",
+                "Carries electricity like Metal: <b>Lightning</b> hitting it flashes through the whole pool, frying Ants and Worms and lighting Oil floating on it.",
                 "Puts out Fire, Ember and Burning Coal like Water.",
             }),
             [El.Ash] = Join("What burnt Wood and Plants leave behind.", new[]
@@ -214,13 +215,14 @@ namespace PowderMan
             {
                 "Carries heat fast. Heat one end and the other end warms up: it can boil Water or light Wood away from the fire.",
                 "Glows red, then orange, when it gets very hot.",
+                "Carries electricity: <b>Lightning</b> hitting it sends a flash along all the Metal and Salt Water it touches. On the way it can light things that burn, sets off explosives and fries Ants and Worms.",
                 "<b>Lava</b> slowly melts it into Molten Metal. <b>Burning Thermite</b> melts it fast.",
                 "<b>Water</b> slowly rusts it. <b>Salt Water</b> rusts it faster.",
                 "<b>Acid</b> eats it and gives off Hydrogen.",
             }),
             [El.MoltenMetal] = Join("Glowing liquid metal.", new[]
             {
-                "Hot: sets things alight.",
+                "Hot: sets things alight. Carries electricity like Metal.",
                 "Cools back into Metal below 1150°, still glowing hot, then slowly cools down.",
                 "<b>Water</b> cools it at once into Metal, boiling into Steam. <b>Ice</b> too.",
             }),
@@ -301,6 +303,7 @@ namespace PowderMan
                 "Passes through air and gases that don't burn, leaving a flash of sparks.",
                 "Sets alight whatever it hits, if it burns. Explosives go off.",
                 "Fuses <b>Sand</b> around where it strikes into Glass.",
+                "Hitting <b>Metal</b>, <b>Molten Metal</b> or <b>Salt Water</b> sends electricity through everything connected to it.",
                 "Lights <b>Methane</b> and <b>Hydrogen</b> on the way down.",
             }),
             [El.Methane] = Join("A dark gas that rises and stays.", new[]
@@ -383,6 +386,7 @@ namespace PowderMan
             else if (e.Heat > 0f) sb.Append("  ·  Hot");
             if (e.HeatsInto != El.Empty) sb.Append($"  ·  Turns to {table[e.HeatsInto].Name} at {e.HeatsAt:0}°");
             if (e.CoolsInto != El.Empty) sb.Append($"  ·  Turns to {table[e.CoolsInto].Name} below {e.CoolsAt:0}°");
+            if (e.Electric) sb.Append("  ·  Electric");
             if (e.Indestructible) sb.Append("  ·  Unbreakable");
             return sb.ToString();
         }
