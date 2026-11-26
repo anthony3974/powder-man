@@ -13,6 +13,9 @@ namespace PowderMan
     {
         public readonly int Width, Height;
         public readonly byte[] Cells;
+        /// <summary>Each cell's temperature in degrees C (air too). Moves with the cell.</summary>
+        public readonly float[] Temp;
+        public const float Room = 20f;
         readonly byte[] life;   // remaining ticks for things that decay; for Cloner, the element it copies
         readonly byte[] shade;  // 0..15, picks a colour variant
         readonly int[] stamp;   // tick number a cell last moved/changed, so nothing moves twice per tick
@@ -26,12 +29,39 @@ namespace PowderMan
         static readonly int[] DX = { -1, 0, 1, -1, 1, -1, 0, 1 };
         static readonly int[] DY = { -1, -1, -1, 0, 0, 1, 1, 1 };
 
+        // Per-element temperature settings copied into flat arrays, for the heat pass that runs over every cell.
+        static readonly float[] Cond = new float[256], Hold = new float[256], HotLimit = new float[256], ColdLimit = new float[256];
+        /// <summary>
+        /// The heat pass runs every HeatEvery ticks (it touches every cell, so this saves time). Each run, this much of
+        /// the temperature difference flows between two touching cells, times the lower Conductivity. Keep it at 0.5 or under.
+        /// </summary>
+        const int HeatEvery = 2;
+        const float HeatFlow = 0.4f;
+
+        static Simulation()
+        {
+            for (int t = 0; t < 256; t++)
+            {
+                var e = E[t];
+                HotLimit[t] = float.MaxValue;
+                ColdLimit[t] = float.MinValue;
+                if (e == null) continue;
+                Cond[t] = e.Conductivity;
+                Hold[t] = Mathf.Min(1f, e.Hold * HeatEvery);
+                if (e.HeatsInto != El.Empty) HotLimit[t] = e.HeatsAt;
+                if (e.Flammability > 0f) HotLimit[t] = Mathf.Min(HotLimit[t], e.IgnitesAt);
+                if (e.CoolsInto != El.Empty) ColdLimit[t] = e.CoolsAt;
+            }
+        }
+
         public Simulation(int width, int height)
         {
             Width = width;
             Height = height;
             int n = width * height;
             Cells = new byte[n];
+            Temp = new float[n];
+            Array.Fill(Temp, Room);
             life = new byte[n];
             shade = new byte[n];
             stamp = new int[n];
@@ -45,6 +75,7 @@ namespace PowderMan
         {
             Array.Clear(Cells, 0, Cells.Length);
             Array.Clear(life, 0, life.Length);
+            Array.Fill(Temp, Room);
         }
 
         public void Set(int x, int y, byte type)
@@ -68,10 +99,11 @@ namespace PowderMan
                 int x = cx + dx, y = cy + dy;
                 if (!InBounds(x, y)) continue;
                 int i = y * Width + x;
-                if (type == El.Empty) { Cells[i] = El.Empty; continue; }
+                if (type == El.Empty) { Cells[i] = El.Empty; Temp[i] = Room; continue; }
                 if (!replace && Cells[i] != El.Empty) continue;
                 if (fill < 1f && Rand01() > fill) continue;
                 SetIndex(i, type);
+                Temp[i] = e.Temperature;
             }
         }
 
@@ -89,6 +121,7 @@ namespace PowderMan
                 else
                     for (int x = Width - 1; x >= 0; x--) UpdateCell(x, y);
             }
+            if (tick % HeatEvery == 0) UpdateHeat();
         }
 
         void UpdateCell(int x, int y)
@@ -243,6 +276,82 @@ namespace PowderMan
             {
                 SetIndex(j, life[i]);
             }
+        }
+
+        // ------------------------------------------------------------------ temperature
+
+        /// <summary>
+        /// Runs over every cell once a tick. Heat flows between touching cells, faster through good conductors
+        /// (Metal). Things that keep their own temperature pull back toward it: Fire and Lava stay hot, Ice stays
+        /// cold, air settles back to room temperature. A cell that gets hot or cold enough changes (melts, boils,
+        /// freezes) or catches fire.
+        /// </summary>
+        void UpdateHeat()
+        {
+            for (int y = 0; y < Height; y++)
+            {
+                int row = y * Width;
+                bool hasUp = y + 1 < Height;
+                for (int x = 0; x < Width; x++)
+                {
+                    int i = row + x;
+                    byte t = Cells[i];
+                    float ti = Temp[i], ci = Cond[t];
+                    if (ci > 0f)
+                    {
+                        if (x + 1 < Width) ti = Exchange(ti, ci, i + 1);
+                        if (hasUp) ti = Exchange(ti, ci, i + Width);
+                    }
+                    float hold = Hold[t];
+                    if (hold > 0f) ti += (E[t].Temperature - ti) * hold;
+                    Temp[i] = ti;
+                    if (ti > HotLimit[t]) Heated(i, x, y, t, ti);
+                    else if (ti < ColdLimit[t]) SetIndex(i, E[t].CoolsInto);
+                }
+            }
+        }
+
+        /// <summary>Moves heat between a cell (temperature ti, conductivity ci) and cell j. Returns the cell's new temperature.</summary>
+        float Exchange(float ti, float ci, int j)
+        {
+            float d = Temp[j] - ti;
+            if (d < 0.5f && d > -0.5f) return ti;
+            float f = d * Mathf.Min(ci, Cond[Cells[j]]) * HeatFlow;
+            Temp[j] -= f;
+            return ti + f;
+        }
+
+        /// <summary>
+        /// A cell past its hot limit: melts or boils if it's past HeatsAt, otherwise catches fire. With Latent, it stays
+        /// at HeatsAt and stores the extra heat in its life (255 = full) until it has soaked up enough to change.
+        /// </summary>
+        void Heated(int i, int x, int y, byte t, float ti)
+        {
+            var e = E[t];
+            if (e.HeatsInto == El.Empty || ti <= e.HeatsAt)
+            {
+                Ignite(x, y, i, e);
+                return;
+            }
+            if (e.Latent > 0f)
+            {
+                Temp[i] = e.HeatsAt;
+                int stored = life[i] + Mathf.Max(1, (int)((ti - e.HeatsAt) * 255f / e.Latent));
+                if (stored < 255) { life[i] = (byte)stored; return; }
+            }
+            SetIndex(i, e.HeatsChance >= 1f || Rand01() < e.HeatsChance ? e.HeatsInto : e.HeatsElse);
+        }
+
+        /// <summary>
+        /// Keeps a temperature inside the range an element can exist at, so something that just changed doesn't
+        /// change straight back (Ice melting gives Water just above freezing, not below it).
+        /// </summary>
+        static float FitTemp(Element e, float t)
+        {
+            if (e.HeatsInto != El.Empty) t = Mathf.Min(t, e.HeatsAt - 1f);
+            if (e.Flammability > 0f) t = Mathf.Min(t, e.IgnitesAt - 1f);
+            if (e.CoolsInto != El.Empty) t = Mathf.Max(t, e.CoolsAt + 1f);
+            return t;
         }
 
         // ------------------------------------------------------------------ special elements
@@ -564,13 +673,20 @@ namespace PowderMan
             (Cells[a], Cells[b]) = (Cells[b], Cells[a]);
             (life[a], life[b]) = (life[b], life[a]);
             (shade[a], shade[b]) = (shade[b], shade[a]);
+            (Temp[a], Temp[b]) = (Temp[b], Temp[a]);
             stamp[a] = tick;
             stamp[b] = tick;
         }
 
+        /// <summary>
+        /// Turns cell i into `type`. Something appearing in empty space starts at its own Temperature; something
+        /// changing into another element keeps its heat (Molten Metal sets into hot Metal), within the new one's range.
+        /// </summary>
         void SetIndex(int i, byte type)
         {
             var e = E[type];
+            if (Cells[i] == El.Empty) Temp[i] = e.Temperature;
+            else if (type != El.Empty) Temp[i] = FitTemp(e, Temp[i]);
             Cells[i] = type;
             life[i] = e.LifeMax > 0 ? (byte)(e.LifeMin + (int)(Next() % (uint)(Mathf.Max(1, e.LifeMax - e.LifeMin + 1)))) : (byte)0;
             shade[i] = (byte)(Next() & 15);
@@ -607,15 +723,15 @@ namespace PowderMan
             using var r = new BinaryReader(File.OpenRead(path));
             int w = r.ReadInt32(), h = r.ReadInt32();
             byte[] data = r.ReadBytes(w * h);
-            Import(data, null, w, h);
+            Import(data, null, null, w, h);
             return true;
         }
 
         /// <summary>Copies another world into this one (used when the screen changes shape).</summary>
-        public void CopyFrom(Simulation other) => Import(other.Cells, other.life, other.Width, other.Height);
+        public void CopyFrom(Simulation other) => Import(other.Cells, other.life, other.Temp, other.Width, other.Height);
 
         /// <summary>Replaces the world with a w x h grid of cells: bottom rows kept, centred sideways.</summary>
-        void Import(byte[] data, byte[] lifeData, int w, int h)
+        void Import(byte[] data, byte[] lifeData, float[] tempData, int w, int h)
         {
             Clear();
             int ox = (Width - w) / 2;
@@ -626,11 +742,13 @@ namespace PowderMan
                 if ((uint)tx >= (uint)Width) continue;
                 int src = y * w + x;
                 if (src >= data.Length) return; // truncated save
+                int i = y * Width + tx;
+                if (tempData != null) Temp[i] = tempData[src];
                 byte t = data[src];
                 if (t == El.Empty || E[t] == null) continue;
-                int i = y * Width + tx;
                 SetIndex(i, t);
                 if (lifeData != null) life[i] = lifeData[src];
+                if (tempData != null) Temp[i] = tempData[src];
             }
         }
     }

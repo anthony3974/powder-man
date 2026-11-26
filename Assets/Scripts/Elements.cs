@@ -148,6 +148,29 @@ namespace PowderMan
         /// <summary>Explosions, acid and the void can't destroy it.</summary>
         public bool Indestructible;
         public bool HiddenFromToolbar;
+        // ---- Temperature (degrees C). Heat flows between touching cells; see Simulation.UpdateHeat.
+        /// <summary>The temperature a fresh cell starts at (drawn, or appearing in empty space). Room is 20.</summary>
+        public float Temperature = 20f;
+        /// <summary>0..1: how strongly it pulls itself back to Temperature each tick (Fire and Lava stay hot, Ice stays cold, air settles back to room).</summary>
+        public float Hold;
+        /// <summary>0..1: how fast heat flows through it. Metal 1, Water 0.5, air 0.05, 0 = not at all.</summary>
+        public float Conductivity = 0.2f;
+        /// <summary>Hotter than HeatsAt it turns into HeatsInto (with HeatsChance, otherwise HeatsElse). Empty = never.</summary>
+        public float HeatsAt;
+        public byte HeatsInto = El.Empty;
+        public float HeatsChance = 1f;
+        public byte HeatsElse = El.Empty;
+        /// <summary>
+        /// Extra heat (in degrees) it soaks up at HeatsAt before it changes, like real melting and boiling: it stays
+        /// at HeatsAt while it fills up. 0 = changes at once. Uses the cell's life, so not for elements that decay.
+        /// </summary>
+        public float Latent;
+        /// <summary>Colder than CoolsAt it turns into CoolsInto. Empty = never.</summary>
+        public float CoolsAt;
+        public byte CoolsInto = El.Empty;
+        /// <summary>Things that burn catch fire on their own when hotter than this. 0 = 300.</summary>
+        public float IgnitesAt;
+
         /// <summary>The element picker tab it's in (one of ElementDatabase.Categories). Unset = the Group it was added under.</summary>
         public string Category;
     }
@@ -175,17 +198,18 @@ namespace PowderMan
         static void DefineElements()
         {
             Group("Basic");
-            Add(El.Empty, new Element { Name = "Empty", Kind = Kind.Empty, Color = Hex("#11131b"), Color2 = Hex("#11131b"), HiddenFromToolbar = true });
+            Add(El.Empty, new Element { Name = "Empty", Kind = Kind.Empty, Color = Hex("#11131b"), Color2 = Hex("#11131b"), HiddenFromToolbar = true, Hold = 0.02f, Conductivity = 0.02f });
 
             Add(El.Wall, new Element { Name = "Wall", Kind = Kind.Solid, Color = Hex("#6b6f7d"), Color2 = Hex("#5c606d"), Indestructible = true });
-            Add(El.Sand, new Element { Name = "Sand", Kind = Kind.Powder, Color = Hex("#e6c983"), Color2 = Hex("#c9a764"), Density = 16 });
-            Add(El.Water, new Element { Name = "Water", Kind = Kind.Liquid, Color = Hex("#3d7fe0"), Color2 = Hex("#3572cc"), Density = 10, Spread = 5 });
-            Add(El.Stone, new Element { Name = "Stone", Kind = Kind.Solid, Color = Hex("#8a8580"), Color2 = Hex("#6e6a66") });
-            Add(El.Wood, new Element { Name = "Wood", Kind = Kind.Solid, Color = Hex("#8a5a33"), Color2 = Hex("#704626"), Flammability = 0.08f, BurnsInto = El.Ember });
+            Add(El.Sand, new Element { Name = "Sand", Kind = Kind.Powder, Color = Hex("#e6c983"), Color2 = Hex("#c9a764"), Density = 16, HeatsAt = 1300f, HeatsInto = El.MoltenGlass, Latent = 200f });
+            Add(El.Water, new Element { Name = "Water", Kind = Kind.Liquid, Color = Hex("#3d7fe0"), Color2 = Hex("#3572cc"), Density = 10, Spread = 5, Conductivity = 0.5f, HeatsAt = 100f, HeatsInto = El.Steam, Latent = 400f });
+            Add(El.Stone, new Element { Name = "Stone", Kind = Kind.Solid, Color = Hex("#8a8580"), Color2 = Hex("#6e6a66"), Conductivity = 0.01f, HeatsAt = 1400f, HeatsInto = El.Lava, Latent = 200f });
+            Add(El.Wood, new Element { Name = "Wood", Kind = Kind.Solid, Color = Hex("#8a5a33"), Color2 = Hex("#704626"), Flammability = 0.08f, BurnsInto = El.Ember, Conductivity = 0.04f });
             Add(El.Fire, new Element
             {
                 Name = "Fire", Kind = Kind.Gas, Color = Hex("#ffd34d"), Color2 = Hex("#ff5a1f"), Density = 1, Spread = 1,
                 Heat = 1f, LifeMin = 8, LifeMax = 26, DecaysInto = El.Smoke, DecayChance = 0.25f, Flicker = true,
+                Temperature = 800f, Hold = 0.3f, Conductivity = 0.1f,
             });
             // Ember: burning wood/plant. Stays put, glows, throws off fire and slowly spreads, then crumbles.
             Add(El.Ember, new Element
@@ -193,33 +217,37 @@ namespace PowderMan
                 Name = "Ember", Category = "Heat", Kind = Kind.Solid, Color = Hex("#ff8a2a"), Color2 = Hex("#a8240c"), Heat = 0.2f, Flicker = true,
                 LifeMin = 60, LifeMax = 180, DecaysInto = El.Ash, DecayChance = 0.4f, DecaysElse = El.Smoke,
                 Emits = El.Fire, EmitChance = 0.15f,
+                Temperature = 650f, Hold = 0.1f,
             });
-            Add(El.Oil, new Element { Name = "Oil", Kind = Kind.Liquid, Color = Hex("#4a3a2a"), Color2 = Hex("#3b2e21"), Density = 8, Spread = 3, Flammability = 0.4f });
+            Add(El.Oil, new Element { Name = "Oil", Kind = Kind.Liquid, Color = Hex("#4a3a2a"), Color2 = Hex("#3b2e21"), Density = 8, Spread = 3, Flammability = 0.4f, IgnitesAt = 250f });
             Add(El.Lava, new Element
             {
                 Name = "Lava", Kind = Kind.Liquid, Color = Hex("#ff6a1a"), Color2 = Hex("#d6360f"), Density = 14, Spread = 1,
                 MoveChance = 0.35f, Heat = 1f, Flicker = true,
+                Temperature = 1200f, Hold = 0.2f, Conductivity = 0.03f,
             });
-            Add(El.Ice, new Element { Name = "Ice", Kind = Kind.Solid, Color = Hex("#bfe8ff"), Color2 = Hex("#a3d6f5") });
-            Add(El.Snow, new Element { Name = "Snow", Kind = Kind.Powder, Color = Hex("#f4f8ff"), Color2 = Hex("#dfe8f5"), Density = 6 });
-            Add(El.Plant, new Element { Name = "Plant", Category = "Life", Kind = Kind.Solid, Color = Hex("#3fbf4a"), Color2 = Hex("#2e9a39"), Flammability = 0.12f, BurnsInto = El.Ember });
-            Add(El.Acid, new Element { Name = "Acid", Kind = Kind.Liquid, Color = Hex("#a6f53a"), Color2 = Hex("#84d61f"), Density = 11, Spread = 4 });
-            Add(El.Gunpowder, new Element { Name = "Gunpowder", Category = "Boom", Kind = Kind.Powder, Color = Hex("#4d4d55"), Color2 = Hex("#2f2f36"), Density = 15, Flammability = 0.9f, ExplodeRadius = 3 });
-            Add(El.Tnt, new Element { Name = "TNT", Category = "Boom", Kind = Kind.Solid, Color = Hex("#d93a3a"), Color2 = Hex("#b52b2b"), Flammability = 0.9f, ExplodeRadius = 8 });
-            Add(El.Glass, new Element { Name = "Glass", Kind = Kind.Solid, Color = Hex("#d9f2ee"), Color2 = Hex("#b8ddd8") });
+            Add(El.Ice, new Element { Name = "Ice", Kind = Kind.Solid, Color = Hex("#bfe8ff"), Color2 = Hex("#a3d6f5"), Temperature = -15f, Hold = 0.2f, Conductivity = 0.1f, HeatsAt = 1f, HeatsInto = El.Water, Latent = 150f });
+            Add(El.Snow, new Element { Name = "Snow", Kind = Kind.Powder, Color = Hex("#f4f8ff"), Color2 = Hex("#dfe8f5"), Density = 6, Temperature = -5f, Hold = 0.1f, Conductivity = 0.15f, HeatsAt = 1f, HeatsInto = El.Water, Latent = 80f });
+            Add(El.Plant, new Element { Name = "Plant", Category = "Life", Kind = Kind.Solid, Color = Hex("#3fbf4a"), Color2 = Hex("#2e9a39"), Flammability = 0.12f, BurnsInto = El.Ember, Conductivity = 0.05f });
+            Add(El.Acid, new Element { Name = "Acid", Kind = Kind.Liquid, Color = Hex("#a6f53a"), Color2 = Hex("#84d61f"), Density = 11, Spread = 4, Conductivity = 0.4f });
+            Add(El.Gunpowder, new Element { Name = "Gunpowder", Category = "Boom", Kind = Kind.Powder, Color = Hex("#4d4d55"), Color2 = Hex("#2f2f36"), Density = 15, Flammability = 0.9f, ExplodeRadius = 3, IgnitesAt = 200f });
+            Add(El.Tnt, new Element { Name = "TNT", Category = "Boom", Kind = Kind.Solid, Color = Hex("#d93a3a"), Color2 = Hex("#b52b2b"), Flammability = 0.9f, ExplodeRadius = 8, IgnitesAt = 250f });
+            Add(El.Glass, new Element { Name = "Glass", Kind = Kind.Solid, Color = Hex("#d9f2ee"), Color2 = Hex("#b8ddd8"), HeatsAt = 1300f, HeatsInto = El.MoltenGlass, Latent = 200f });
             Add(El.Steam, new Element
             {
                 Name = "Steam", Kind = Kind.Gas, Color = Hex("#c8d3e0"), Color2 = Hex("#aab6c4"), Density = 1, Spread = 4,
                 LifeMin = 90, LifeMax = 220, DecaysInto = El.Water, DecayChance = 0.4f,
+                Temperature = 110f, Conductivity = 0.1f,
             });
             Add(El.Smoke, new Element
             {
                 Name = "Smoke", Kind = Kind.Gas, Color = Hex("#4a4a52"), Color2 = Hex("#3a3a40"), Density = 2, Spread = 3,
                 LifeMin = 40, LifeMax = 100,
+                Temperature = 60f, Conductivity = 0.02f,
             });
             // Cloner: grabs the first thing that touches it and keeps spawning copies of it.
-            Add(El.Cloner, new Element { Name = "Cloner", Category = "Odd", Kind = Kind.Solid, Color = Hex("#d4a72c"), Color2 = Hex("#b88d1c"), Indestructible = true });
-            Add(El.Void, new Element { Name = "Void", Category = "Odd", Kind = Kind.Solid, Color = Hex("#2a0f3d"), Color2 = Hex("#1c0829"), Indestructible = true });
+            Add(El.Cloner, new Element { Name = "Cloner", Category = "Odd", Kind = Kind.Solid, Color = Hex("#d4a72c"), Color2 = Hex("#b88d1c"), Indestructible = true, Conductivity = 0f });
+            Add(El.Void, new Element { Name = "Void", Category = "Odd", Kind = Kind.Solid, Color = Hex("#2a0f3d"), Color2 = Hex("#1c0829"), Indestructible = true, Conductivity = 0f });
 
             // ---- Earth
             Group("Earth");
@@ -228,60 +256,65 @@ namespace PowderMan
             {
                 Name = "Mud", Kind = Kind.Powder, Color = Hex("#4f3a26"), Color2 = Hex("#3d2c1c"), Density = 17, MoveChance = 0.4f,
                 Scatter = 0.03f, Emits = El.Methane, EmitChance = 0.0002f,
+                Conductivity = 0.3f, HeatsAt = 100f, HeatsInto = El.Dirt, Latent = 200f,
             });
-            Add(El.Clay, new Element { Name = "Clay", Kind = Kind.Solid, Color = Hex("#b87d5b"), Color2 = Hex("#a06a4a") });
-            Add(El.Brick, new Element { Name = "Brick", Kind = Kind.Solid, Color = Hex("#a8432f"), Color2 = Hex("#8a3424") });
-            Add(El.Salt, new Element { Name = "Salt", Kind = Kind.Powder, Color = Hex("#f2f0ea"), Color2 = Hex("#d8d4cb"), Density = 17 });
-            Add(El.SaltWater, new Element { Name = "Salt Water", Kind = Kind.Liquid, Color = Hex("#3a9cc4"), Color2 = Hex("#318aad"), Density = 11, Spread = 5 });
-            Add(El.Ash, new Element { Name = "Ash", Kind = Kind.Powder, Color = Hex("#9a9a9e"), Color2 = Hex("#7c7c82"), Density = 5, Scatter = 0.4f });
-            Add(El.Obsidian, new Element { Name = "Obsidian", Kind = Kind.Solid, Color = Hex("#2b2238"), Color2 = Hex("#1a1424") });
+            Add(El.Clay, new Element { Name = "Clay", Kind = Kind.Solid, Color = Hex("#b87d5b"), Color2 = Hex("#a06a4a"), Conductivity = 0.1f, HeatsAt = 500f, HeatsInto = El.Brick, Latent = 100f });
+            Add(El.Brick, new Element { Name = "Brick", Kind = Kind.Solid, Color = Hex("#a8432f"), Color2 = Hex("#8a3424"), HeatsAt = 1400f, HeatsInto = El.Lava, Latent = 200f, Conductivity = 0.1f });
+            Add(El.Salt, new Element { Name = "Salt", Kind = Kind.Powder, Color = Hex("#f2f0ea"), Color2 = Hex("#d8d4cb"), Density = 17, Conductivity = 0.25f });
+            Add(El.SaltWater, new Element { Name = "Salt Water", Kind = Kind.Liquid, Color = Hex("#3a9cc4"), Color2 = Hex("#318aad"), Density = 11, Spread = 5, Conductivity = 0.6f, HeatsAt = 105f, HeatsInto = El.Steam, Latent = 400f, HeatsChance = 0.75f, HeatsElse = El.Salt });
+            Add(El.Ash, new Element { Name = "Ash", Kind = Kind.Powder, Color = Hex("#9a9a9e"), Color2 = Hex("#7c7c82"), Density = 5, Scatter = 0.4f, Conductivity = 0.02f });
+            Add(El.Obsidian, new Element { Name = "Obsidian", Kind = Kind.Solid, Color = Hex("#2b2238"), Color2 = Hex("#1a1424"), Conductivity = 0.01f, HeatsAt = 1400f, HeatsInto = El.Lava, Latent = 200f });
 
             // ---- Metals and heat
             Group("Heat");
-            Add(El.Metal, new Element { Name = "Metal", Kind = Kind.Solid, Color = Hex("#a9b3c2"), Color2 = Hex("#8a94a3") });
+            Add(El.Metal, new Element { Name = "Metal", Kind = Kind.Solid, Color = Hex("#a9b3c2"), Color2 = Hex("#8a94a3"), Conductivity = 1f, HeatsAt = 1300f, HeatsInto = El.MoltenMetal, Latent = 200f });
             Add(El.MoltenMetal, new Element
             {
                 Name = "Molten Metal", Kind = Kind.Liquid, Color = Hex("#ffe08a"), Color2 = Hex("#ff9a3c"), Density = 20, Spread = 2,
                 MoveChance = 0.5f, Heat = 0.6f, Flicker = true,
                 LifeMin = 200, LifeMax = 255, DecaysInto = El.Metal, DecayChance = 0.3f, DecaysElse = El.MoltenMetal,
+                Temperature = 1500f, Conductivity = 0.8f, CoolsAt = 1150f, CoolsInto = El.Metal,
             });
             Add(El.Rust, new Element { Name = "Rust", Kind = Kind.Powder, Color = Hex("#a5532a"), Color2 = Hex("#7d3d1d"), Density = 14 });
-            Add(El.Coal, new Element { Name = "Coal", Kind = Kind.Powder, Color = Hex("#2a2a2e"), Color2 = Hex("#1a1a1d"), Density = 14, Flammability = 0.04f, BurnsInto = El.BurningCoal });
+            Add(El.Coal, new Element { Name = "Coal", Kind = Kind.Powder, Color = Hex("#2a2a2e"), Color2 = Hex("#1a1a1d"), Density = 14, Flammability = 0.04f, BurnsInto = El.BurningCoal, IgnitesAt = 400f });
             Add(El.BurningCoal, new Element
             {
                 Name = "Burning Coal", Kind = Kind.Powder, Color = Hex("#ff7a2a"), Color2 = Hex("#7a1e0c"), Density = 14, Heat = 0.4f,
                 Flicker = true, Emits = El.Fire, EmitChance = 0.05f, HiddenFromToolbar = true,
                 LifeMin = 200, LifeMax = 255, DecaysInto = El.Ash, DecayChance = 0.15f, DecaysElse = El.BurningCoal,
+                Temperature = 900f, Hold = 0.1f, Conductivity = 0.3f,
             });
-            Add(El.Thermite, new Element { Name = "Thermite", Kind = Kind.Powder, Color = Hex("#8c6f6a"), Color2 = Hex("#6e5450"), Density = 18, Flammability = 0.15f, BurnsInto = El.BurningThermite });
+            Add(El.Thermite, new Element { Name = "Thermite", Kind = Kind.Powder, Color = Hex("#8c6f6a"), Color2 = Hex("#6e5450"), Density = 18, Flammability = 0.15f, BurnsInto = El.BurningThermite, Conductivity = 0.4f, IgnitesAt = 600f });
             Add(El.BurningThermite, new Element
             {
                 Name = "Burning Thermite", Kind = Kind.Powder, Color = Hex("#ffffff"), Color2 = Hex("#ffb347"), Density = 18, Heat = 1f,
                 Flicker = true, Emits = El.Fire, EmitChance = 0.2f, HiddenFromToolbar = true,
                 LifeMin = 80, LifeMax = 160, DecaysInto = El.MoltenMetal, DecayChance = 0.4f,
+                Temperature = 2500f, Hold = 0.3f, Conductivity = 0.5f,
             });
             Add(El.MoltenGlass, new Element
             {
                 Name = "Molten Glass", Kind = Kind.Liquid, Color = Hex("#ffcf8a"), Color2 = Hex("#f29b4c"), Density = 15, Spread = 1,
                 MoveChance = 0.3f, Heat = 0.3f, Flicker = true,
                 LifeMin = 200, LifeMax = 255, DecaysInto = El.Glass, DecayChance = 0.35f, DecaysElse = El.MoltenGlass,
+                Temperature = 1400f, Conductivity = 0.3f, CoolsAt = 1000f, CoolsInto = El.Glass,
             });
 
             // ---- Living things
             Group("Life");
-            Add(El.Seed, new Element { Name = "Seed", Kind = Kind.Powder, Color = Hex("#c9a25a"), Color2 = Hex("#9c7a3c"), Density = 12, Flammability = 0.2f });
+            Add(El.Seed, new Element { Name = "Seed", Kind = Kind.Powder, Color = Hex("#c9a25a"), Color2 = Hex("#9c7a3c"), Density = 12, Flammability = 0.2f, Conductivity = 0.05f });
             // Bud: the growing tip of a sprouted seed. Climbs upward leaving Plant behind, then turns into Plant.
             Add(El.Bud, new Element
             {
                 Name = "Bud", Kind = Kind.Solid, Color = Hex("#9df07a"), Color2 = Hex("#7ad65a"), Flammability = 0.12f, BurnsInto = El.Ember,
-                LifeMin = 60, LifeMax = 200, DecaysInto = El.Plant, HiddenFromToolbar = true,
+                LifeMin = 60, LifeMax = 200, DecaysInto = El.Plant, HiddenFromToolbar = true, Conductivity = 0.05f,
             });
-            Add(El.Vine, new Element { Name = "Vine", Kind = Kind.Solid, Color = Hex("#2f7d32"), Color2 = Hex("#225c25"), Flammability = 0.35f });
-            Add(El.Moss, new Element { Name = "Moss", Kind = Kind.Solid, Color = Hex("#5f8f3a"), Color2 = Hex("#4a7230"), Flammability = 0.1f });
+            Add(El.Vine, new Element { Name = "Vine", Kind = Kind.Solid, Color = Hex("#2f7d32"), Color2 = Hex("#225c25"), Flammability = 0.35f, IgnitesAt = 250f, Conductivity = 0.05f });
+            Add(El.Moss, new Element { Name = "Moss", Kind = Kind.Solid, Color = Hex("#5f8f3a"), Color2 = Hex("#4a7230"), Flammability = 0.1f, Conductivity = 0.05f });
             Add(El.Fungus, new Element
             {
                 Name = "Fungus", Kind = Kind.Solid, Color = Hex("#c7b6d9"), Color2 = Hex("#a28fb8"), Flammability = 0.1f,
-                Emits = El.Methane, EmitChance = 0.0005f,
+                Emits = El.Methane, EmitChance = 0.0005f, Conductivity = 0.05f,
             });
             Add(El.Ant, new Element { Name = "Ant", Kind = Kind.Powder, Color = Hex("#3a1f14"), Color2 = Hex("#1f100a"), Density = 12, Flammability = 0.5f });
             Add(El.Worm, new Element { Name = "Worm", Kind = Kind.Powder, Color = Hex("#e08a9a"), Color2 = Hex("#c46f80"), Density = 12, Flammability = 0.3f });
@@ -294,32 +327,35 @@ namespace PowderMan
                 Name = "Cloud", Kind = Kind.Gas, Color = Hex("#e3e8ef"), Color2 = Hex("#c4ccd8"), Density = 1, Spread = 1, MoveChance = 0.08f,
                 Emits = El.Water, EmitChance = 0.002f,
                 LifeMin = 200, LifeMax = 255, DecaysInto = El.Empty, DecayChance = 0.03f, DecaysElse = El.Cloud,
+                Conductivity = 0.02f,
             });
-            Add(El.Lightning, new Element { Name = "Lightning", Kind = Kind.Gas, Color = Hex("#fffbe0"), Color2 = Hex("#d9e8ff"), Flicker = true });
+            Add(El.Lightning, new Element { Name = "Lightning", Kind = Kind.Gas, Color = Hex("#fffbe0"), Color2 = Hex("#d9e8ff"), Flicker = true, Temperature = 3000f, Hold = 1f, Conductivity = 0f });
             Add(El.Spark, new Element
             {
                 Name = "Spark", Kind = Kind.Solid, Color = Hex("#ffffff"), Color2 = Hex("#bcd4ff"), Heat = 1f, Flicker = true,
                 LifeMin = 2, LifeMax = 6, HiddenFromToolbar = true,
+                Temperature = 1500f, Hold = 0.5f, Conductivity = 0.3f,
             });
-            Add(El.Methane, new Element { Name = "Methane", Category = "Boom", Kind = Kind.Gas, Color = Hex("#3b4a3a"), Color2 = Hex("#2f3b2e"), Density = 1, Spread = 3, Flammability = 0.6f, ExplodeRadius = 2 });
-            Add(El.Hydrogen, new Element { Name = "Hydrogen", Category = "Boom", Kind = Kind.Gas, Color = Hex("#2f3a52"), Color2 = Hex("#273047"), Density = 0, Spread = 6, Flammability = 1f, ExplodeRadius = 2 });
+            Add(El.Methane, new Element { Name = "Methane", Category = "Boom", Kind = Kind.Gas, Color = Hex("#3b4a3a"), Color2 = Hex("#2f3b2e"), Density = 1, Spread = 3, Flammability = 0.6f, ExplodeRadius = 2, Conductivity = 0.02f, IgnitesAt = 500f });
+            Add(El.Hydrogen, new Element { Name = "Hydrogen", Category = "Boom", Kind = Kind.Gas, Color = Hex("#2f3a52"), Color2 = Hex("#273047"), Density = 0, Spread = 6, Flammability = 1f, ExplodeRadius = 2, Conductivity = 0.1f, IgnitesAt = 500f });
             Add(El.PoisonGas, new Element
             {
                 Name = "Poison Gas", Kind = Kind.Gas, Color = Hex("#8fbf2a"), Color2 = Hex("#6e9a1c"), Density = 3, Spread = 3,
                 LifeMin = 200, LifeMax = 255, DecaysInto = El.Empty, DecayChance = 0.3f, DecaysElse = El.PoisonGas,
+                Conductivity = 0.02f,
             });
-            Add(El.Bubble, new Element { Name = "Bubble", Kind = Kind.Gas, Color = Hex("#cfefff"), Color2 = Hex("#a9dcf5"), Density = 1, Spread = 1, LifeMin = 120, LifeMax = 255 });
+            Add(El.Bubble, new Element { Name = "Bubble", Kind = Kind.Gas, Color = Hex("#cfefff"), Color2 = Hex("#a9dcf5"), Density = 1, Spread = 1, LifeMin = 120, LifeMax = 255, Conductivity = 0.02f });
 
             // ---- Odd and fun
             Group("Odd");
-            Add(El.Nitro, new Element { Name = "Nitro", Category = "Boom", Kind = Kind.Liquid, Color = Hex("#e9f27a"), Color2 = Hex("#cfd95e"), Density = 9, Spread = 3, Flammability = 0.9f, ExplodeRadius = 6 });
-            Add(El.Sponge, new Element { Name = "Sponge", Kind = Kind.Solid, Color = Hex("#f2d64b"), Color2 = Hex("#d9bc33"), Flammability = 0.05f });
-            Add(El.WetSponge, new Element { Name = "Wet Sponge", Kind = Kind.Solid, Color = Hex("#b5a23a"), Color2 = Hex("#978628"), HiddenFromToolbar = true });
-            Add(El.Ball, new Element { Name = "Bouncy Ball", Kind = Kind.Powder, Color = Hex("#ff4f8b"), Color2 = Hex("#e0306d"), Density = 14, Scatter = 0f });
-            Add(El.Antimatter, new Element { Name = "Antimatter", Kind = Kind.Powder, Color = Hex("#e6b3ff"), Color2 = Hex("#a64dff"), Density = 10, Flicker = true });
-            Add(El.BlackHole, new Element { Name = "Black Hole", Kind = Kind.Solid, Color = Hex("#000000"), Color2 = Hex("#1a0d24"), Indestructible = true });
-            Add(El.PortalIn, new Element { Name = "Portal In", Kind = Kind.Solid, Color = Hex("#2f8cff"), Color2 = Hex("#1a5fd1"), Flicker = true, Indestructible = true });
-            Add(El.PortalOut, new Element { Name = "Portal Out", Kind = Kind.Solid, Color = Hex("#ff8c1a"), Color2 = Hex("#d1600a"), Flicker = true, Indestructible = true });
+            Add(El.Nitro, new Element { Name = "Nitro", Category = "Boom", Kind = Kind.Liquid, Color = Hex("#e9f27a"), Color2 = Hex("#cfd95e"), Density = 9, Spread = 3, Flammability = 0.9f, ExplodeRadius = 6, IgnitesAt = 120f });
+            Add(El.Sponge, new Element { Name = "Sponge", Kind = Kind.Solid, Color = Hex("#f2d64b"), Color2 = Hex("#d9bc33"), Flammability = 0.05f, Conductivity = 0.05f });
+            Add(El.WetSponge, new Element { Name = "Wet Sponge", Kind = Kind.Solid, Color = Hex("#b5a23a"), Color2 = Hex("#978628"), HiddenFromToolbar = true, Conductivity = 0.4f, HeatsAt = 100f, HeatsInto = El.Sponge, Latent = 200f });
+            Add(El.Ball, new Element { Name = "Bouncy Ball", Kind = Kind.Powder, Color = Hex("#ff4f8b"), Color2 = Hex("#e0306d"), Density = 14, Scatter = 0f, Conductivity = 0.1f });
+            Add(El.Antimatter, new Element { Name = "Antimatter", Kind = Kind.Powder, Color = Hex("#e6b3ff"), Color2 = Hex("#a64dff"), Density = 10, Flicker = true, Conductivity = 0f });
+            Add(El.BlackHole, new Element { Name = "Black Hole", Kind = Kind.Solid, Color = Hex("#000000"), Color2 = Hex("#1a0d24"), Indestructible = true, Conductivity = 0f });
+            Add(El.PortalIn, new Element { Name = "Portal In", Kind = Kind.Solid, Color = Hex("#2f8cff"), Color2 = Hex("#1a5fd1"), Flicker = true, Indestructible = true, Conductivity = 0f });
+            Add(El.PortalOut, new Element { Name = "Portal Out", Kind = Kind.Solid, Color = Hex("#ff8c1a"), Color2 = Hex("#d1600a"), Flicker = true, Indestructible = true, Conductivity = 0f });
         }
 
         static void DefineReactions()
@@ -461,6 +497,8 @@ namespace PowderMan
                 var c = (Color)e.Color;
                 e.Color2 = (Color32)new Color(c.r * 0.85f, c.g * 0.85f, c.b * 0.85f, 1f);
             }
+            if (e.Flammability > 0f && e.IgnitesAt <= 0f) e.IgnitesAt = 300f;
+            if (e.Latent > 0f && e.LifeMax > 0) Debug.LogError($"{e.Name} decays, so it can't use Latent (both use the cell's life).");
             e.LifeMin = Mathf.Clamp(e.LifeMin, 1, 255);
             e.LifeMax = Mathf.Clamp(e.LifeMax, 0, 255);
             Table[id] = e;

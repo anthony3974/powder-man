@@ -5,6 +5,7 @@ Open ideas and notes. Completed and phone-tested tasks (through v1.7) have been 
 ## Done, to test on the phone
 
 - [x] Picker tabs: Basic, Earth, Heat, Boom, Life, Sky, Odd and All. Opens on the tab holding the slot's element, and a dot marks the tabs holding A's and B's.
+- [x] Temperature: heat spreads between touching things (fast through Metal). Things melt, boil, dry, bake, set and catch fire at set temperatures, slowly, and hot things glow. **Heat view** button (H) colours the world by temperature. Check on the phone: speed with a full screen, the glow, and the new strip row fitting.
 
 ## From voice note (22 Nov 2026)
 
@@ -15,4 +16,3 @@ Open ideas and notes. Completed and phone-tested tasks (through v1.7) have been 
 
 - [ ] Electricity through Metal and Salt Water (Lightning would use it)
 - [ ] Wet Sponge drips when squeezed
-- [ ] Temperature, so things heat and cool gradually

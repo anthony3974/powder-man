@@ -12,7 +12,7 @@ namespace PowderMan
     /// With a mouse, left draws and right switches between A and B.
     ///
     /// Keys: mouse wheel or [ ] = brush size, Tab = switch A/B, Space = pause, . = single step while paused,
-    /// R = replace mode, C = clear, 1-9 = element for the active slot, F5 = save, F9 = load,
+    /// R = replace mode, H = Heat view, C = clear, 1-9 = element for the active slot, F5 = save, F9 = load,
     /// Esc / Android back = close the element picker, or the home menu (quits from the menu).
     ///
     /// The world fills the screen right of the side strip: its height is fixed and its width follows the
@@ -62,7 +62,9 @@ namespace PowderMan
         Vector2Int strokeLast;
         const int MouseStrokeId = -1;
 
-        bool paused, replaceMode;
+        bool paused, replaceMode, heatView;
+        Color32[] glowRamp, heatRamp;   // colour lookups for hot things glowing, and for Heat view
+        bool[] canGlow;                 // per element: glows when hot (not air, not things that already look hot)
         int speedIndex = 2;
         float tickTimer;
         int particleCount;
@@ -89,6 +91,7 @@ namespace PowderMan
             Application.targetFrameRate = 60;
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
             BuildPalette();
+            BuildTemperatureColors();
             LoadSlots();
 
             var go = new GameObject("World View");
@@ -206,6 +209,60 @@ namespace PowderMan
             drawing = false;
         }
 
+        // ---- Temperature colours. Things hotter than GlowFrom glow red, then orange, then yellow-white.
+        const float GlowFrom = 450f, GlowTo = 1450f;
+
+        /// <summary>Heat view colours: blue for cold, dark at room temperature, then purple, red, orange, yellow, white.</summary>
+        static readonly (float temp, Color32 color)[] HeatStops =
+        {
+            (-30f, new Color32(40, 90, 255, 255)), (0f, new Color32(90, 190, 255, 255)), (20f, new Color32(22, 26, 40, 255)),
+            (60f, new Color32(90, 40, 130, 255)), (150f, new Color32(190, 40, 90, 255)), (400f, new Color32(240, 90, 20, 255)),
+            (900f, new Color32(255, 205, 40, 255)), (1500f, new Color32(255, 255, 235, 255)),
+        };
+        const int HeatRampSize = 384;
+
+        /// <summary>Where a temperature sits in heatRamp: stretched out near room temperature, squeezed up high.</summary>
+        static int HeatIndex(float t)
+        {
+            float u = t >= Simulation.Room ? Mathf.Log(1f + (t - Simulation.Room) / 20f, 2f) : -(Simulation.Room - t) / 10f;
+            return Mathf.Clamp((int)((u + 5f) * 32f), 0, HeatRampSize - 1);
+        }
+
+        void BuildTemperatureColors()
+        {
+            var dull = new Color32(150, 20, 10, 255);
+            var orange = new Color32(255, 110, 30, 255);
+            var white = new Color32(255, 240, 170, 255);
+            glowRamp = new Color32[64];
+            for (int n = 0; n < glowRamp.Length; n++)
+            {
+                float f = n / (glowRamp.Length - 1f);
+                Color c = f < 0.5f ? Color.Lerp(dull, orange, f * 2f) : Color.Lerp(orange, white, f * 2f - 1f);
+                c.a = Mathf.Lerp(0.35f, 0.9f, f); // alpha = how much the glow covers the element's own colour
+                glowRamp[n] = c;
+            }
+
+            heatRamp = new Color32[HeatRampSize];
+            for (int n = 0; n < HeatRampSize; n++)
+            {
+                // Undo HeatIndex to find this slot's temperature, then colour it from the stops.
+                float u = n / 32f - 5f;
+                float t = u >= 0f ? Simulation.Room + 20f * (Mathf.Pow(2f, u) - 1f) : Simulation.Room + u * 10f;
+                int k = 0;
+                while (k < HeatStops.Length - 2 && t > HeatStops[k + 1].temp) k++;
+                var (t0, c0) = HeatStops[k];
+                var (t1, c1) = HeatStops[k + 1];
+                heatRamp[n] = Color32.Lerp(c0, c1, Mathf.InverseLerp(t0, t1, t));
+            }
+
+            canGlow = new bool[256];
+            for (int t = 1; t < 256; t++)
+            {
+                var e = ElementDatabase.Table[t];
+                canGlow[t] = e != null && e.Heat <= 0f && e.Kind != Kind.Gas;
+            }
+        }
+
         void BuildPalette()
         {
             palette = new Color32[256 * 16];
@@ -264,12 +321,28 @@ namespace PowderMan
         void Render()
         {
             var cells = sim.Cells;
+            var temp = sim.Temp;
             int count = 0;
+            bool heat = heatView && !inMenu;
             for (int i = 0; i < cells.Length; i++)
             {
                 byte t = cells[i];
                 if (t != El.Empty) count++;
-                pixels[i] = palette[t * 16 + sim.Shade(i)];
+                Color32 c = palette[t * 16 + sim.Shade(i)];
+                float ti = temp[i];
+                if (heat)
+                {
+                    // Heat view: the temperature colour, with a little of the element so you can still see shapes.
+                    Color32 h = heatRamp[HeatIndex(ti)];
+                    c = Color32.Lerp(h, c, t == El.Empty ? 0.35f : 0.2f);
+                }
+                else if (ti > GlowFrom && canGlow[t])
+                {
+                    Color32 g = glowRamp[Mathf.Min(63, (int)((ti - GlowFrom) * 63f / (GlowTo - GlowFrom)))];
+                    c = Color32.Lerp(c, g, g.a / 255f);
+                    c.a = 255;
+                }
+                pixels[i] = c;
             }
             particleCount = count;
             texture.SetPixels32(pixels);
@@ -290,6 +363,7 @@ namespace PowderMan
             if (Input.GetKeyDown(KeyCode.Space)) paused = !paused;
             if (Input.GetKeyDown(KeyCode.Period) && paused) sim.Step();
             if (Input.GetKeyDown(KeyCode.R)) replaceMode = !replaceMode;
+            if (Input.GetKeyDown(KeyCode.H)) heatView = !heatView;
             if (Input.GetKeyDown(KeyCode.C)) sim.Clear();
             if (Input.GetKeyDown(KeyCode.LeftBracket)) ChangeBrush(-1);
             if (Input.GetKeyDown(KeyCode.RightBracket)) ChangeBrush(1);
@@ -527,9 +601,9 @@ namespace PowderMan
             Fill(new Rect(0, 0, StripRight, Screen.height), PanelColor);
             Fill(new Rect(StripRight - Mathf.Max(1f, s), 0, Mathf.Max(1f, s), Screen.height), EdgeColor);
 
-            // Rows, in units of one button height: two tall slot buttons, then seven tool rows.
+            // Rows, in units of one button height: two tall slot buttons, then eight tool rows.
             const float penRows = 1.7f;
-            const int toolRows = 7;
+            const int toolRows = 8;
             float top = Screen.height - Screen.safeArea.yMax + Pad;
             float avail = Screen.safeArea.height - Pad * 2 - Gap * (toolRows + 2) - Gap * 2;
             float unit = Mathf.Min(40f * s, avail / (penRows * 2 + toolRows));
@@ -561,6 +635,9 @@ namespace PowderMan
             y += unit + Gap;
 
             if (Btn(new Rect(x, y, w, unit), "Replace", replaceMode ? OnColor : ButtonColor, stripBtnStyle)) replaceMode = !replaceMode;
+            y += unit + Gap;
+
+            if (Btn(new Rect(x, y, w, unit), "Heat view", heatView ? OnColor : ButtonColor, stripBtnStyle)) heatView = !heatView;
             y += unit + Gap;
 
             if (Btn(new Rect(x, y, w, unit), "Clear", ButtonColor, stripBtnStyle)) sim.Clear();
@@ -695,9 +772,13 @@ namespace PowderMan
             if (Input.mousePresent && Input.touchCount == 0 && OverWorld(Input.mousePosition))
             {
                 Vector2Int cell = ScreenCell(Input.mousePosition);
-                if (sim.InBounds(cell.x, cell.y)) hover = ElementName(sim.Get(cell.x, cell.y)) + "  ·  ";
+                if (sim.InBounds(cell.x, cell.y))
+                {
+                    byte t = sim.Get(cell.x, cell.y);
+                    hover = $"{(t == El.Empty ? "Air" : ElementName(t))} {sim.Temp[cell.y * W + cell.x]:0}°  ·  ";
+                }
             }
-            string info = $"{hover}{particleCount:N0} particles  ·  {fps:0} fps{(paused ? "  ·  PAUSED" : "")}";
+            string info = $"{hover}{particleCount:N0} particles  ·  {fps:0} fps{(paused ? "  ·  PAUSED" : "")}{(heatView ? "  ·  HEAT VIEW" : "")}";
             if (Time.unscaledTime < messageUntil) info += "  ·  " + message;
             GUI.Label(new Rect(StripRight + Pad + 2, Pad, Screen.width, 30f * UiScale), info, infoStyle);
         }

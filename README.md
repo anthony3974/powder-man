@@ -27,9 +27,9 @@ A slim strip down the left side holds the controls:
 - **A** and **B**: tap the other one to switch, tap the active one to pick its element (pick a tab, then an element). Tap outside the picker to close it.
 - **- 3 +**: brush size (tap the number to reset it).
 - **Pause / Play** and **Step**.
-- **Speed** (×0.25 to ×4), **Replace** mode, **Clear** and **Menu**.
+- **Speed** (×0.25 to ×4), **Replace** mode, **Heat view**, **Clear** and **Menu**.
 
-The top line shows the element under the mouse, the particle count and the FPS.
+The top line shows the element under the mouse and its temperature, the particle count and the FPS.
 
 The pen sprays powders, liquids and gases as separate grains rather than solid blobs (solids like Wall and Wood still draw solid, and brush size 0 always places its grain). Falling grains drift a little sideways as they drop, so streams spread out into loose dots. How thick the spray is is **Spray Density** in the Inspector, and the drift is each element's `Scatter`.
 
@@ -43,10 +43,24 @@ The pen sprays powders, liquids and gases as separate grains rather than solid b
 | Space | Pause / play |
 | `.` | Step one tick (while paused) |
 | R | Replace mode: draw over things, not just into empty space |
+| H | Heat view |
 | C | Clear |
 | 1–9 | Pick one of the first nine Basic elements for the active slot |
 | F5 / F9 | Save / load (one slot, in the app's data folder) |
 | Esc / Android back | Close the element picker or Help, or go to the home menu (from the menu, quits) |
+
+## Temperature
+
+Every cell has a temperature, air included, and it moves with the cell. Room temperature is 20°.
+
+- Heat flows into whatever is touching, at the speed of the poorer conductor of the two. Metal carries heat fastest, Water and Ice fairly well, and air, Wood, Stone and living things hardly at all. A metal bar with one end in Lava gets hot along its length, and a metal pot over a fire boils its Water.
+- Fire (800°), Ember, Burning Coal, Lava (1200°), Burning Thermite and Lightning keep themselves hot. Ice (-15°) and Snow keep themselves cold, so they last in room air until something warm reaches them. Air drifts back to 20°.
+- Things change when they get hot or cold enough: Ice and Snow melt, Water and Salt Water boil, Mud and Wet Sponge dry, Clay bakes, Metal, Glass, Sand and Stone melt, and Molten Metal and Molten Glass set again. Melting and boiling are slow: the cell sits at that temperature while it soaks up extra heat (`Latent`), so a pool of Water on a Lava crust steams away over a minute or two, not at once.
+- Things that burn catch fire on their own when hot enough (Wood 300°, Gunpowder 200°, Nitro 120°).
+- Anything hotter than about 450° glows dark red, then orange, then yellow-white. **Heat view** colours the whole world by temperature: blue is cold, dark is 20°, then purple, red, orange, yellow and white. The Help screen's tag line gives each element's temperatures.
+- Freezing Water is still the Ice reaction, not temperature, so a cube of Ice in a pool spreads at the same speed as before.
+
+The heat pass runs every second tick, in `UpdateHeat` in `Simulation.cs`. Saves keep the elements but not their temperatures.
 
 ## Elements
 
@@ -54,7 +68,7 @@ The pen sprays powders, liquids and gases as separate grains rather than solid b
 |---|---|---|
 | Wall | solid | Indestructible. Nothing gets through it, and it can hold Antimatter. |
 | Sand | powder | Piles up and sinks through liquids. Lava or Lightning turns it into Glass. |
-| Water | liquid | Puts out fire, boils into Steam, turns lava into Stone. Makes Mud with Dirt and Salt Water with Salt. Grows Plants and Moss, rusts Metal, drowns Ants and Worms. |
+| Water | liquid | Puts out fire, boils into Steam (at 100°), turns lava into Stone. Makes Mud with Dirt and Salt Water with Salt. Grows Plants and Moss, rusts Metal, drowns Ants and Worms. |
 | Stone | solid | Lava melts it very slowly, Burning Thermite quickly. Moss creeps over it. |
 | Wood | solid | Catches fire and burns as Ember. Fungus eats it. |
 | Fire | gas | Rises, lights flammable things, fades into Smoke. Melts Ice and Snow, dries Mud, bakes Clay. |
@@ -80,8 +94,8 @@ The pen sprays powders, liquids and gases as separate grains rather than solid b
 | Salt Water | liquid | Heavier than Water, doesn't freeze, leaves Salt when it boils, rusts Metal faster. |
 | Ash | powder | Left by burnt Wood and Plant. Floats on Water. |
 | Obsidian | solid | Lava touching Ice. Acid-proof. |
-| Metal | solid | Lava melts it into Molten Metal. Water rusts it. Acid on it gives off Hydrogen. |
-| Molten Metal | liquid | Hot, lights things, cools back into Metal. |
+| Metal | solid | Carries heat fast. Lava melts it into Molten Metal. Water rusts it. Acid on it gives off Hydrogen. |
+| Molten Metal | liquid | Hot, lights things, sets back into Metal below 1150° and glows as it cools. |
 | Rust | powder | Wet Metal crumbles into it. |
 | Coal | powder | Hard to light, then burns for a long time and leaves Ash. |
 | Thermite | powder | Burns white-hot and melts through Metal, Stone, Brick and Glass. Water doesn't stop it. |
@@ -139,14 +153,21 @@ The main `Element` settings:
 | `LifeMin`, `LifeMax`, `DecaysInto`, `DecayChance`, `DecaysElse` | Disappears after a while (Fire, Smoke, Steam, Ember). Life is at most 255 ticks: set `DecaysElse` to the element itself to make it last longer (Cloud, Molten Metal) |
 | `Emits`, `EmitChance` | Spawns something into empty neighbours (Ember throws off Fire) |
 | `Flicker` | Re-rolls its shade every tick |
+| `Temperature` | What a fresh cell starts at, in °C (default 20) |
+| `Hold` | 0 to 1: how hard it pulls itself back to `Temperature` each tick (Fire, Lava, Ice; air is 0.02) |
+| `Conductivity` | 0 to 1: how fast heat moves through it (Metal 1, Water 0.5, air 0.02, default 0.2) |
+| `HeatsAt`, `HeatsInto`, `HeatsChance`, `HeatsElse` | Hotter than `HeatsAt` it becomes `HeatsInto` (or, if `HeatsChance` fails, `HeatsElse`) |
+| `Latent` | Extra heat, in degrees, it soaks up at `HeatsAt` before it changes (uses the cell's life, so not for things that decay) |
+| `CoolsAt`, `CoolsInto` | Colder than `CoolsAt` it becomes `CoolsInto` |
+| `IgnitesAt` | Things that burn catch fire on their own above this (default 300) |
 | `Indestructible` | Explosions, Acid, Void, Antimatter and Black Holes can't touch it |
 | `HiddenFromToolbar` | Not in the element picker |
 | `Category` | Which picker tab it's in (default: the `Group` it was added under) |
 
 Other files:
 
-- **`Assets/Scripts/Simulation.cs`**: the grid and the rules for movement, burning, explosions, reactions, save/load, and the elements that need their own code (Cloner, Bouncy Ball, Nitro, Bubble, Lightning, Black Hole, Portals, Ant, Worm, Vine and sprouting Seeds, in `UpdateSpecial`).
-- **`Assets/Scripts/PowderGame.cs`**: rendering, input (touch, mouse, keys), the side strip, the element picker and its tabs, the home menu and its demo. Grid height (180), tick rate, brush limits and spray density are in the Inspector on the `Powder Game` object. Turn off **Fit Width To Screen** there to use a fixed **Grid Width** instead.
+- **`Assets/Scripts/Simulation.cs`**: the grid and the rules for movement, burning, explosions, reactions, temperature, save/load, and the elements that need their own code (Cloner, Bouncy Ball, Nitro, Bubble, Lightning, Black Hole, Portals, Ant, Worm, Vine and sprouting Seeds, in `UpdateSpecial`).
+- **`Assets/Scripts/PowderGame.cs`**: rendering (including the glow of hot things and Heat view), input (touch, mouse, keys), the side strip, the element picker and its tabs, the home menu and its demo. Grid height (180), tick rate, brush limits and spray density are in the Inspector on the `Powder Game` object. Turn off **Fit Width To Screen** there to use a fixed **Grid Width** instead.
 - **`Assets/Scripts/ElementHelp.cs`**: the Help screen text for each element. Update it when you change what an element does.
 - **`Assets/Scripts/BuildInfo.cs`**: the version.
 - **`plan.md`**: ideas, what's done, and what still needs checking.

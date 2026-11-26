@@ -24,8 +24,10 @@ namespace PowderMan
                 "<b>Pause / Step</b>: freeze the world, or move it on one tick at a time.",
                 "<b>Speed</b>: from x0.25 to x4.",
                 "<b>Replace</b>: draw over things instead of only into empty space.",
+                "<b>Heat view</b>: shows how hot everything is. Blue is cold, dark is room temperature, then red, orange, yellow and white for hotter and hotter.",
+                "<b>Temperature</b>: everything has one, and heat spreads to what's touching it, fastest through Metal. Things melt, boil, freeze and catch fire when they get hot or cold enough, and very hot things glow. Each element's line at the top of its help says at what temperature.",
                 "<b>Clear</b> empties the world. <b>Menu</b> has Save, Load and New sandbox.",
-                "<b>Mouse and keys</b>: left mouse draws, right mouse or Tab switches A/B, wheel or [ ] sizes the brush, 1-9 picks a Basic element, Space pauses, R replace, C clear, F5 save, F9 load.",
+                "<b>Mouse and keys</b>: left mouse draws, right mouse or Tab switches A/B, wheel or [ ] sizes the brush, 1-9 picks a Basic element, Space pauses, R replace, H Heat view, C clear, F5 save, F9 load.",
             });
 
         static readonly Dictionary<byte, string> Text = new Dictionary<byte, string>
@@ -46,6 +48,7 @@ namespace PowderMan
             [El.Water] = Join("Falls and spreads out flat.", new[]
             {
                 "Puts out <b>Fire</b>, sometimes boiling into Steam.",
+                "Boils into Steam at 100°, slowly: it has to soak up a lot of heat first.",
                 "Cools <b>Lava</b> into Stone, boiling into Steam.",
                 "<b>Ice</b> slowly freezes it. <b>Snow</b> melts into it.",
                 "<b>Dirt</b> soaks it up into Mud. <b>Salt</b> dissolves into Salt Water.",
@@ -57,6 +60,7 @@ namespace PowderMan
             [El.Stone] = Join("Solid rock.", new[]
             {
                 "<b>Lava</b> melts it, very slowly.",
+                "Barely lets heat through, so a Stone crust keeps Lava's heat in.",
                 "<b>Burning Thermite</b> melts it into Lava.",
                 "<b>Moss</b> creeps over it, and Water slowly grows Moss on it.",
                 "Made when Lava touches Water.",
@@ -69,6 +73,7 @@ namespace PowderMan
             }),
             [El.Fire] = Join("Rises, flickers and dies out in a moment, often leaving Smoke.", new[]
             {
+                "About 800°. Heats up what's around it.",
                 "Sets anything flammable alight.",
                 "<b>Water</b> and <b>Salt Water</b> put it out.",
                 "Melts Ice and Snow into Water.",
@@ -88,7 +93,7 @@ namespace PowderMan
             }),
             [El.Lava] = Join("Slow, heavy, burning-hot liquid.", new[]
             {
-                "Sets things alight.",
+                "Sets things alight. Stays at 1200° and heats what's around it.",
                 "<b>Water</b>: turns into Stone, the Water into Steam.",
                 "<b>Ice</b>: melts it, sometimes setting as Obsidian.",
                 "<b>Sand</b> becomes Glass, <b>Glass</b> becomes Molten Glass.",
@@ -99,6 +104,7 @@ namespace PowderMan
             [El.Ice] = Join("Frozen water.", new[]
             {
                 "Slowly freezes Water next to it.",
+                "Keeps itself at -15°, so it lasts in room air, but melts once enough heat gets to it.",
                 "Turns Steam back into Water.",
                 "<b>Fire</b>, <b>Lava</b>, <b>Salt</b> and <b>Salt Water</b> melt it.",
                 "<b>Lava</b> touching it can set into Obsidian.",
@@ -165,7 +171,7 @@ namespace PowderMan
             }),
             [El.Mud] = Join("Wet soil. Heavy and slow to move.", new[]
             {
-                "<b>Fire</b>, <b>Lava</b> and <b>Ember</b> dry it back into Dirt.",
+                "<b>Fire</b>, <b>Lava</b> and <b>Ember</b> dry it back into Dirt, and so does anything hot enough to boil Water.",
                 "<b>Seeds</b> sprout fast on it. <b>Plants</b> on it keep sprouting.",
                 "Lets off a little Methane now and then, like a swamp.",
             }),
@@ -206,6 +212,8 @@ namespace PowderMan
             // ---- Metals and heat
             [El.Metal] = Join("A solid metal block.", new[]
             {
+                "Carries heat fast. Heat one end and the other end warms up: it can boil Water or light Wood away from the fire.",
+                "Glows red, then orange, when it gets very hot.",
                 "<b>Lava</b> slowly melts it into Molten Metal. <b>Burning Thermite</b> melts it fast.",
                 "<b>Water</b> slowly rusts it. <b>Salt Water</b> rusts it faster.",
                 "<b>Acid</b> eats it and gives off Hydrogen.",
@@ -213,7 +221,7 @@ namespace PowderMan
             [El.MoltenMetal] = Join("Glowing liquid metal.", new[]
             {
                 "Hot: sets things alight.",
-                "Cools back into Metal after about ten seconds.",
+                "Cools back into Metal below 1150°, still glowing hot, then slowly cools down.",
                 "<b>Water</b> cools it at once into Metal, boiling into Steam. <b>Ice</b> too.",
             }),
             [El.Rust] = Join("Crumbly orange powder.", new[]
@@ -236,7 +244,7 @@ namespace PowderMan
             [El.MoltenGlass] = Join("Glowing liquid glass. Very slow.", new[]
             {
                 "Hot: sets things alight.",
-                "Sets back into Glass after about ten seconds, or at once in <b>Water</b>.",
+                "Sets back into Glass below 1000°, or at once in <b>Water</b>.",
             }),
 
             // ---- Living things
@@ -362,15 +370,19 @@ namespace PowderMan
         /// <summary>The help text for an element (summary, blank line, one bullet per line).</summary>
         public static string For(byte id) => Text.TryGetValue(id, out var t) ? t : "";
 
-        /// <summary>A short line from the element's settings, like "Powder  ·  Burns  ·  Explodes".</summary>
+        /// <summary>A short line from the element's settings, like "Powder  ·  Explodes at 200°" or "Liquid  ·  Turns to Steam at 100°".</summary>
         public static string Tags(byte id)
         {
-            var e = ElementDatabase.Table[id];
+            var table = ElementDatabase.Table;
+            var e = table[id];
             var sb = new StringBuilder();
             sb.Append(id == El.Ant || id == El.Worm ? "Creature" : id == El.Lightning ? "Bolt" : e.Kind.ToString());
-            if (e.ExplodeRadius > 0) sb.Append("  ·  Explodes");
-            else if (e.Flammability > 0f) sb.Append("  ·  Burns");
-            if (e.Heat > 0f) sb.Append("  ·  Hot");
+            if (e.ExplodeRadius > 0) sb.Append($"  ·  Explodes at {e.IgnitesAt:0}°");
+            else if (e.Flammability > 0f) sb.Append($"  ·  Burns at {e.IgnitesAt:0}°");
+            if (e.Hold >= 0.1f) sb.Append($"  ·  Stays at {e.Temperature:0}°");
+            else if (e.Heat > 0f) sb.Append("  ·  Hot");
+            if (e.HeatsInto != El.Empty) sb.Append($"  ·  Turns to {table[e.HeatsInto].Name} at {e.HeatsAt:0}°");
+            if (e.CoolsInto != El.Empty) sb.Append($"  ·  Turns to {table[e.CoolsInto].Name} below {e.CoolsAt:0}°");
             if (e.Indestructible) sb.Append("  ·  Unbreakable");
             return sb.ToString();
         }
