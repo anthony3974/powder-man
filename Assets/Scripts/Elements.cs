@@ -9,7 +9,8 @@ namespace PowderMan
     //  To add a new element:
     //    1. Give it an id in El below (any unused number from 1 to 254).
     //    2. Add it in ElementDatabase.DefineElements() with Add(El.MyThing, new Element { ... }).
-    //       Element picker buttons appear in the order you Add them.
+    //       It goes in the picker tab of the Group(...) above it (or set Category to pick another),
+    //       and buttons within a tab appear in the order you Add them.
     //    3. Optionally add reactions in DefineReactions() with React(...).
     // =====================================================================================
 
@@ -147,6 +148,8 @@ namespace PowderMan
         /// <summary>Explosions, acid and the void can't destroy it.</summary>
         public bool Indestructible;
         public bool HiddenFromToolbar;
+        /// <summary>The element picker tab it's in (one of ElementDatabase.Categories). Unset = the Group it was added under.</summary>
+        public string Category;
     }
 
     public struct Reaction
@@ -161,10 +164,17 @@ namespace PowderMan
     {
         public static readonly Element[] Table = new Element[256];
         public static readonly List<Reaction>[] Reactions = new List<Reaction>[256];
+        /// <summary>Every pickable element, tab by tab (Categories order), in Add order within a tab.</summary>
         public static readonly List<byte> Toolbar = new List<byte>();
+        /// <summary>The element picker tabs, in order.</summary>
+        public static readonly string[] Categories = { "Basic", "Earth", "Heat", "Boom", "Life", "Sky", "Odd" };
+        /// <summary>The pickable elements in each tab, matching Categories.</summary>
+        public static readonly List<byte>[] ByCategory = new List<byte>[Categories.Length];
+        static string group = "Basic";
 
         static void DefineElements()
         {
+            Group("Basic");
             Add(El.Empty, new Element { Name = "Empty", Kind = Kind.Empty, Color = Hex("#11131b"), Color2 = Hex("#11131b"), HiddenFromToolbar = true });
 
             Add(El.Wall, new Element { Name = "Wall", Kind = Kind.Solid, Color = Hex("#6b6f7d"), Color2 = Hex("#5c606d"), Indestructible = true });
@@ -180,7 +190,7 @@ namespace PowderMan
             // Ember: burning wood/plant. Stays put, glows, throws off fire and slowly spreads, then crumbles.
             Add(El.Ember, new Element
             {
-                Name = "Ember", Kind = Kind.Solid, Color = Hex("#ff8a2a"), Color2 = Hex("#a8240c"), Heat = 0.2f, Flicker = true,
+                Name = "Ember", Category = "Heat", Kind = Kind.Solid, Color = Hex("#ff8a2a"), Color2 = Hex("#a8240c"), Heat = 0.2f, Flicker = true,
                 LifeMin = 60, LifeMax = 180, DecaysInto = El.Ash, DecayChance = 0.4f, DecaysElse = El.Smoke,
                 Emits = El.Fire, EmitChance = 0.15f,
             });
@@ -192,10 +202,10 @@ namespace PowderMan
             });
             Add(El.Ice, new Element { Name = "Ice", Kind = Kind.Solid, Color = Hex("#bfe8ff"), Color2 = Hex("#a3d6f5") });
             Add(El.Snow, new Element { Name = "Snow", Kind = Kind.Powder, Color = Hex("#f4f8ff"), Color2 = Hex("#dfe8f5"), Density = 6 });
-            Add(El.Plant, new Element { Name = "Plant", Kind = Kind.Solid, Color = Hex("#3fbf4a"), Color2 = Hex("#2e9a39"), Flammability = 0.12f, BurnsInto = El.Ember });
+            Add(El.Plant, new Element { Name = "Plant", Category = "Life", Kind = Kind.Solid, Color = Hex("#3fbf4a"), Color2 = Hex("#2e9a39"), Flammability = 0.12f, BurnsInto = El.Ember });
             Add(El.Acid, new Element { Name = "Acid", Kind = Kind.Liquid, Color = Hex("#a6f53a"), Color2 = Hex("#84d61f"), Density = 11, Spread = 4 });
-            Add(El.Gunpowder, new Element { Name = "Gunpowder", Kind = Kind.Powder, Color = Hex("#4d4d55"), Color2 = Hex("#2f2f36"), Density = 15, Flammability = 0.9f, ExplodeRadius = 3 });
-            Add(El.Tnt, new Element { Name = "TNT", Kind = Kind.Solid, Color = Hex("#d93a3a"), Color2 = Hex("#b52b2b"), Flammability = 0.9f, ExplodeRadius = 8 });
+            Add(El.Gunpowder, new Element { Name = "Gunpowder", Category = "Boom", Kind = Kind.Powder, Color = Hex("#4d4d55"), Color2 = Hex("#2f2f36"), Density = 15, Flammability = 0.9f, ExplodeRadius = 3 });
+            Add(El.Tnt, new Element { Name = "TNT", Category = "Boom", Kind = Kind.Solid, Color = Hex("#d93a3a"), Color2 = Hex("#b52b2b"), Flammability = 0.9f, ExplodeRadius = 8 });
             Add(El.Glass, new Element { Name = "Glass", Kind = Kind.Solid, Color = Hex("#d9f2ee"), Color2 = Hex("#b8ddd8") });
             Add(El.Steam, new Element
             {
@@ -208,10 +218,11 @@ namespace PowderMan
                 LifeMin = 40, LifeMax = 100,
             });
             // Cloner: grabs the first thing that touches it and keeps spawning copies of it.
-            Add(El.Cloner, new Element { Name = "Cloner", Kind = Kind.Solid, Color = Hex("#d4a72c"), Color2 = Hex("#b88d1c"), Indestructible = true });
-            Add(El.Void, new Element { Name = "Void", Kind = Kind.Solid, Color = Hex("#2a0f3d"), Color2 = Hex("#1c0829"), Indestructible = true });
+            Add(El.Cloner, new Element { Name = "Cloner", Category = "Odd", Kind = Kind.Solid, Color = Hex("#d4a72c"), Color2 = Hex("#b88d1c"), Indestructible = true });
+            Add(El.Void, new Element { Name = "Void", Category = "Odd", Kind = Kind.Solid, Color = Hex("#2a0f3d"), Color2 = Hex("#1c0829"), Indestructible = true });
 
             // ---- Earth
+            Group("Earth");
             Add(El.Dirt, new Element { Name = "Dirt", Kind = Kind.Powder, Color = Hex("#7a5534"), Color2 = Hex("#5e4027"), Density = 15, Scatter = 0.08f });
             Add(El.Mud, new Element
             {
@@ -226,6 +237,7 @@ namespace PowderMan
             Add(El.Obsidian, new Element { Name = "Obsidian", Kind = Kind.Solid, Color = Hex("#2b2238"), Color2 = Hex("#1a1424") });
 
             // ---- Metals and heat
+            Group("Heat");
             Add(El.Metal, new Element { Name = "Metal", Kind = Kind.Solid, Color = Hex("#a9b3c2"), Color2 = Hex("#8a94a3") });
             Add(El.MoltenMetal, new Element
             {
@@ -256,6 +268,7 @@ namespace PowderMan
             });
 
             // ---- Living things
+            Group("Life");
             Add(El.Seed, new Element { Name = "Seed", Kind = Kind.Powder, Color = Hex("#c9a25a"), Color2 = Hex("#9c7a3c"), Density = 12, Flammability = 0.2f });
             // Bud: the growing tip of a sprouted seed. Climbs upward leaving Plant behind, then turns into Plant.
             Add(El.Bud, new Element
@@ -274,6 +287,7 @@ namespace PowderMan
             Add(El.Worm, new Element { Name = "Worm", Kind = Kind.Powder, Color = Hex("#e08a9a"), Color2 = Hex("#c46f80"), Density = 12, Flammability = 0.3f });
 
             // ---- Gases and weather
+            Group("Sky");
             // Cloud: lasts a couple of minutes (a fresh life each time DecayChance fails) and rains as it goes.
             Add(El.Cloud, new Element
             {
@@ -287,8 +301,8 @@ namespace PowderMan
                 Name = "Spark", Kind = Kind.Solid, Color = Hex("#ffffff"), Color2 = Hex("#bcd4ff"), Heat = 1f, Flicker = true,
                 LifeMin = 2, LifeMax = 6, HiddenFromToolbar = true,
             });
-            Add(El.Methane, new Element { Name = "Methane", Kind = Kind.Gas, Color = Hex("#3b4a3a"), Color2 = Hex("#2f3b2e"), Density = 1, Spread = 3, Flammability = 0.6f, ExplodeRadius = 2 });
-            Add(El.Hydrogen, new Element { Name = "Hydrogen", Kind = Kind.Gas, Color = Hex("#2f3a52"), Color2 = Hex("#273047"), Density = 0, Spread = 6, Flammability = 1f, ExplodeRadius = 2 });
+            Add(El.Methane, new Element { Name = "Methane", Category = "Boom", Kind = Kind.Gas, Color = Hex("#3b4a3a"), Color2 = Hex("#2f3b2e"), Density = 1, Spread = 3, Flammability = 0.6f, ExplodeRadius = 2 });
+            Add(El.Hydrogen, new Element { Name = "Hydrogen", Category = "Boom", Kind = Kind.Gas, Color = Hex("#2f3a52"), Color2 = Hex("#273047"), Density = 0, Spread = 6, Flammability = 1f, ExplodeRadius = 2 });
             Add(El.PoisonGas, new Element
             {
                 Name = "Poison Gas", Kind = Kind.Gas, Color = Hex("#8fbf2a"), Color2 = Hex("#6e9a1c"), Density = 3, Spread = 3,
@@ -297,7 +311,8 @@ namespace PowderMan
             Add(El.Bubble, new Element { Name = "Bubble", Kind = Kind.Gas, Color = Hex("#cfefff"), Color2 = Hex("#a9dcf5"), Density = 1, Spread = 1, LifeMin = 120, LifeMax = 255 });
 
             // ---- Odd and fun
-            Add(El.Nitro, new Element { Name = "Nitro", Kind = Kind.Liquid, Color = Hex("#e9f27a"), Color2 = Hex("#cfd95e"), Density = 9, Spread = 3, Flammability = 0.9f, ExplodeRadius = 6 });
+            Group("Odd");
+            Add(El.Nitro, new Element { Name = "Nitro", Category = "Boom", Kind = Kind.Liquid, Color = Hex("#e9f27a"), Color2 = Hex("#cfd95e"), Density = 9, Spread = 3, Flammability = 0.9f, ExplodeRadius = 6 });
             Add(El.Sponge, new Element { Name = "Sponge", Kind = Kind.Solid, Color = Hex("#f2d64b"), Color2 = Hex("#d9bc33"), Flammability = 0.05f });
             Add(El.WetSponge, new Element { Name = "Wet Sponge", Kind = Kind.Solid, Color = Hex("#b5a23a"), Color2 = Hex("#978628"), HiddenFromToolbar = true });
             Add(El.Ball, new Element { Name = "Bouncy Ball", Kind = Kind.Powder, Color = Hex("#ff4f8b"), Color2 = Hex("#e0306d"), Density = 14, Scatter = 0f });
@@ -421,8 +436,21 @@ namespace PowderMan
 
         static ElementDatabase()
         {
+            for (int c = 0; c < Categories.Length; c++) ByCategory[c] = new List<byte>();
             DefineElements();
             DefineReactions();
+            foreach (var list in ByCategory) Toolbar.AddRange(list);
+        }
+
+        /// <summary>Elements added after this go in this picker tab, unless they set their own Category.</summary>
+        static void Group(string category) => group = category;
+
+        /// <summary>Which picker tab an element is in, or -1 (hidden, or the Eraser).</summary>
+        public static int CategoryOf(byte id)
+        {
+            for (int c = 0; c < ByCategory.Length; c++)
+                if (ByCategory[c].Contains(id)) return c;
+            return -1;
         }
 
         static void Add(byte id, Element e)
@@ -436,7 +464,11 @@ namespace PowderMan
             e.LifeMin = Mathf.Clamp(e.LifeMin, 1, 255);
             e.LifeMax = Mathf.Clamp(e.LifeMax, 0, 255);
             Table[id] = e;
-            if (!e.HiddenFromToolbar) Toolbar.Add(id);
+            if (e.HiddenFromToolbar) return;
+            e.Category ??= group;
+            int tab = System.Array.IndexOf(Categories, e.Category);
+            if (tab < 0) Debug.LogError($"{e.Name} is in category \"{e.Category}\", which isn't in Categories.");
+            else ByCategory[tab].Add(id);
         }
 
         static void React(byte a, byte b, byte aBecomes, byte bBecomes, float chance)

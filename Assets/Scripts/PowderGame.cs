@@ -52,6 +52,8 @@ namespace PowderMan
         readonly byte[] slots = { El.Sand, El.Water };
         int activeSlot;
         int pickerSlot = -1;    // which slot the element picker is open for, -1 = closed
+        int pickerTab;          // which picker tab shows: an index into ElementDatabase.Categories, or AllTab
+        static int AllTab => ElementDatabase.Categories.Length;
         static string SlotName(int slot) => slot == 0 ? "A" : "B";
 
         // The one stroke being drawn. strokeId = touch fingerId, or MouseStrokeId for the mouse.
@@ -330,10 +332,19 @@ namespace PowderMan
             {
                 activeSlot = slot;
                 SaveSlots();
-                if (pickerSlot >= 0) pickerSlot = slot; // picker open: follow the switch
+                if (pickerSlot >= 0) OpenPicker(slot); // picker open: follow the switch
                 return;
             }
-            pickerSlot = pickerSlot == slot ? -1 : slot;
+            if (pickerSlot == slot) pickerSlot = -1;
+            else OpenPicker(slot);
+        }
+
+        /// <summary>Opens the element picker for a slot, on the tab holding that slot's element (All stays on All).</summary>
+        void OpenPicker(int slot)
+        {
+            pickerSlot = slot;
+            int tab = ElementDatabase.CategoryOf(slots[slot]);
+            if (tab >= 0 && pickerTab != AllTab) pickerTab = tab;
         }
 
         void LoadSlots()
@@ -344,6 +355,7 @@ namespace PowderMan
                 if (id == El.Empty || (id > 0 && id < 256 && ElementDatabase.Table[id] != null)) slots[s] = (byte)id;
             }
             activeSlot = Mathf.Clamp(PlayerPrefs.GetInt("activeSlot", 0), 0, 1);
+            pickerTab = Mathf.Clamp(PlayerPrefs.GetInt("pickerTab", 0), 0, AllTab);
         }
 
         void SaveSlots()
@@ -351,6 +363,7 @@ namespace PowderMan
             PlayerPrefs.SetInt("slotA", slots[0]);
             PlayerPrefs.SetInt("slotB", slots[1]);
             PlayerPrefs.SetInt("activeSlot", activeSlot);
+            PlayerPrefs.SetInt("pickerTab", pickerTab);
         }
 
         void OnApplicationPause(bool goingToBackground) { if (goingToBackground) PlayerPrefs.Save(); }
@@ -583,37 +596,73 @@ namespace PowderMan
             return clicked;
         }
 
-        /// <summary>A panel of every element. Picks one for pickerSlot. Tapping outside closes it.</summary>
+        /// <summary>
+        /// The element picker: a row of tabs (one per category, plus All) over a grid of that tab's elements,
+        /// with the Eraser last in every tab. Picks one for pickerSlot. Tapping outside closes it.
+        /// </summary>
         void DrawPicker()
         {
             float s = UiScale;
-            var area = new Rect(StripRight, 0, Screen.width - StripRight, Screen.height);
-            Fill(area, new Color(0f, 0f, 0f, 0.4f));
+            float right = Mathf.Min(Screen.width, Screen.safeArea.xMax);
+            var area = new Rect(StripRight, 0, right - StripRight, Screen.height);
+            Fill(new Rect(StripRight, 0, Screen.width - StripRight, Screen.height), new Color(0f, 0f, 0f, 0.4f));
 
-            var bar = ElementDatabase.Toolbar;
-            int count = bar.Count + 1; // + Eraser
-            float pad = 12f * s, gap = 6f * s, titleH = 34f * s, margin = 10f * s;
-            float bw = 104f * s, bh = 46f * s;
-            int cols = Mathf.Clamp((int)((area.width - margin * 2 - pad * 2 + gap) / (bw + gap)), 1, count);
-            int rows = Mathf.CeilToInt(count / (float)cols);
-            bh = Mathf.Min(bh, (area.height - margin * 2 - pad * 2 - titleH - gap * (rows - 1)) / rows);
-            bw = Mathf.Min(bw * 1.25f, (area.width - margin * 2 - pad * 2 - gap * (cols - 1)) / cols);
-
-            float pw = pad * 2 + cols * (bw + gap) - gap, ph = pad * 2 + titleH + rows * (bh + gap) - gap;
-            var panel = new Rect(area.x + (area.width - pw) / 2f, (area.height - ph) / 2f, pw, ph);
+            float margin = 10f * s, pad = 12f * s, gap = 6f * s, titleH = 30f * s, tabH = 40f * s;
+            float pw = Mathf.Min(area.width - margin * 2, 1100f * s), ph = area.height - margin * 2;
+            var panel = new Rect(area.x + (area.width - pw) / 2f, margin, pw, ph);
             Fill(panel, PanelColor);
             Outline(panel, EdgeColor, Mathf.Max(1f, s));
 
             infoStyle.alignment = TextAnchor.MiddleLeft;
-            GUI.Label(new Rect(panel.x + pad, panel.y + pad, pw, titleH - gap), $"Slot {SlotName(pickerSlot)}: pick an element", infoStyle);
+            GUI.Label(new Rect(panel.x + pad, panel.y + pad * 0.5f, pw - pad * 2, titleH), $"Slot {SlotName(pickerSlot)}: pick an element", infoStyle);
             infoStyle.alignment = TextAnchor.UpperLeft;
+
+            // ---- Tabs
+            var cats = ElementDatabase.Categories;
+            int tabs = cats.Length + 1;
+            float y = panel.y + pad * 0.5f + titleH;
+            float tw = (pw - pad * 2 - gap * (tabs - 1)) / tabs;
+            var tabStyle = tw < 70f * s ? smallStyle : labelStyle;
+            for (int c = 0; c < tabs; c++)
+            {
+                var r = new Rect(panel.x + pad + c * (tw + gap), y, tw, tabH);
+                if (Btn(r, c < cats.Length ? cats[c] : "All", c == pickerTab ? OnColor : ButtonColor, tabStyle) && pickerTab != c)
+                {
+                    pickerTab = c;
+                    SaveSlots();
+                }
+                // A dot on tabs holding slot A's or B's element, so you can find them.
+                if (c < cats.Length && (ElementDatabase.CategoryOf(slots[0]) == c || ElementDatabase.CategoryOf(slots[1]) == c))
+                    Fill(new Rect(r.xMax - 9f * s, r.y + 4f * s, 5f * s, 5f * s), c == pickerTab ? (Color)DarkText : (Color)OnColor);
+            }
+            y += tabH + pad;
+
+            // ---- Elements in this tab, then the Eraser. Pick the column count that gives the biggest buttons.
+            var list = pickerTab < cats.Length ? ElementDatabase.ByCategory[pickerTab] : ElementDatabase.Toolbar;
+            int count = list.Count + 1;
+            var grid = new Rect(panel.x + pad, y, pw - pad * 2, panel.yMax - pad - y);
+            float maxW = 150f * s, maxH = 56f * s;
+            int cols = 1;
+            float best = -1f;
+            for (int c = 1; c <= count; c++)
+            {
+                int rws = Mathf.CeilToInt(count / (float)c);
+                float cw = (grid.width - gap * (c - 1)) / c, ch = (grid.height - gap * (rws - 1)) / rws;
+                float score = Mathf.Min(Mathf.Min(cw, maxW) / 2.6f, Mathf.Min(ch, maxH));
+                if (score >= best - 0.001f) { best = Mathf.Max(best, score); cols = c; } // ties: more columns, fewer rows
+            }
+            int rows = Mathf.CeilToInt(count / (float)cols);
+            float bw = Mathf.Min(maxW, (grid.width - gap * (cols - 1)) / cols);
+            float bh = Mathf.Min(maxH, (grid.height - gap * (rows - 1)) / rows);
+            float gx = grid.x + (grid.width - (cols * (bw + gap) - gap)) / 2f;
+            var style = bh < 24f * s || bw < 80f * s ? smallStyle : labelStyle;
 
             for (int n = 0; n < count; n++)
             {
-                byte id = n < bar.Count ? bar[n] : El.Empty;
-                var r = new Rect(panel.x + pad + (n % cols) * (bw + gap), panel.y + pad + titleH + (n / cols) * (bh + gap), bw, bh);
+                byte id = n < list.Count ? list[n] : El.Empty;
+                var r = new Rect(gx + (n % cols) * (bw + gap), grid.y + (n / cols) * (bh + gap), bw, bh);
                 Color32 c = id == El.Empty ? EraserColor : ElementDatabase.Table[id].Color;
-                if (Btn(r, ElementName(id), c))
+                if (Btn(r, ElementName(id), c, style))
                 {
                     activeSlot = pickerSlot;
                     SetSlot(pickerSlot, id);

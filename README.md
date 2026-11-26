@@ -20,9 +20,11 @@ The world fills the screen. Its height is fixed (180 cells) and its width follow
 
 There is **one pen with two saved slots, A and B** (Sand and Water to start), so you can flip between two elements fast. **Tap** the other slot to draw with it. **Tap the active slot again** to open the element picker and change what it holds. The active slot has a gold frame and the other is dimmed. Your A, B and active slot are remembered between runs. One finger draws, and extra fingers are ignored. With a mouse, left draws and right switches between A and B. Set a slot to **Eraser** to rub things out.
 
+The element picker has a row of **tabs**: Basic, Earth, Heat, Boom, Life, Sky, Odd, and All (every element at once). It opens on the tab holding the slot's element, and a dot marks the tabs holding A's and B's elements. The Eraser is the last button in every tab.
+
 A slim strip down the left side holds the controls:
 
-- **A** and **B**: tap the other one to switch, tap the active one to pick its element. Tap outside the picker to close it.
+- **A** and **B**: tap the other one to switch, tap the active one to pick its element (pick a tab, then an element). Tap outside the picker to close it.
 - **- 3 +**: brush size (tap the number to reset it).
 - **Pause / Play** and **Step**.
 - **Speed** (×0.25 to ×4), **Replace** mode, **Clear** and **Menu**.
@@ -42,7 +44,7 @@ The pen sprays powders, liquids and gases as separate grains rather than solid b
 | `.` | Step one tick (while paused) |
 | R | Replace mode: draw over things, not just into empty space |
 | C | Clear |
-| 1–9 | Pick the element for the active slot |
+| 1–9 | Pick one of the first nine Basic elements for the active slot |
 | F5 / F9 | Save / load (one slot, in the app's data folder) |
 | Esc / Android back | Close the element picker or Help, or go to the home menu (from the menu, quits) |
 
@@ -107,7 +109,7 @@ The pen sprays powders, liquids and gases as separate grains rather than solid b
 
 Most changes go in **`Assets/Scripts/Elements.cs`**, where every element and reaction is defined.
 
-**Add an element:** give it an id in `El`, then add it in `DefineElements()`. Element picker buttons follow the order of the `Add` calls. Then write its Help text in `Assets/Scripts/ElementHelp.cs`.
+**Add an element:** give it an id in `El`, then add it in `DefineElements()`. It goes in the picker tab named by the `Group(...)` call above it, or set `Category` to put it in another tab (the tabs are listed in `Categories`). Within a tab, buttons follow the order of the `Add` calls. Then write its Help text in `Assets/Scripts/ElementHelp.cs`.
 
 ```csharp
 public const byte Tar = 59;   // in El, the next free id
@@ -139,11 +141,12 @@ The main `Element` settings:
 | `Flicker` | Re-rolls its shade every tick |
 | `Indestructible` | Explosions, Acid, Void, Antimatter and Black Holes can't touch it |
 | `HiddenFromToolbar` | Not in the element picker |
+| `Category` | Which picker tab it's in (default: the `Group` it was added under) |
 
 Other files:
 
 - **`Assets/Scripts/Simulation.cs`**: the grid and the rules for movement, burning, explosions, reactions, save/load, and the elements that need their own code (Cloner, Bouncy Ball, Nitro, Bubble, Lightning, Black Hole, Portals, Ant, Worm, Vine and sprouting Seeds, in `UpdateSpecial`).
-- **`Assets/Scripts/PowderGame.cs`**: rendering, input (touch, mouse, keys), the side strip, the element picker, the home menu and its demo. Grid height (180), tick rate, brush limits and spray density are in the Inspector on the `Powder Game` object. Turn off **Fit Width To Screen** there to use a fixed **Grid Width** instead.
+- **`Assets/Scripts/PowderGame.cs`**: rendering, input (touch, mouse, keys), the side strip, the element picker and its tabs, the home menu and its demo. Grid height (180), tick rate, brush limits and spray density are in the Inspector on the `Powder Game` object. Turn off **Fit Width To Screen** there to use a fixed **Grid Width** instead.
 - **`Assets/Scripts/ElementHelp.cs`**: the Help screen text for each element. Update it when you change what an element does.
 - **`Assets/Scripts/BuildInfo.cs`**: the version.
 - **`plan.md`**: ideas, what's done, and what still needs checking.

@@ -18,13 +18,14 @@ namespace PowderMan
             {
                 "<b>Pen slots A and B</b>: the pen holds two elements. Tap the other slot to switch to it. Tap the slot that's already lit to pick a new element for it.",
                 "<b>Drawing</b>: one finger draws with the lit slot. Powders, liquids and gases spray out as grains, solids draw solid.",
-                "<b>Eraser</b>: the last button in the element picker. Put it in a slot to rub things out.",
+                "<b>Element picker</b>: tabs along the top sort the elements (Basic, Earth, Heat, Boom, Life, Sky, Odd), and All shows every one. A dot marks the tabs holding A's and B's elements.",
+                "<b>Eraser</b>: the last button in every picker tab. Put it in a slot to rub things out.",
                 "<b>- 3 +</b>: brush size. Tap the number to reset it. Size 0 places single grains.",
                 "<b>Pause / Step</b>: freeze the world, or move it on one tick at a time.",
                 "<b>Speed</b>: from x0.25 to x4.",
                 "<b>Replace</b>: draw over things instead of only into empty space.",
                 "<b>Clear</b> empties the world. <b>Menu</b> has Save, Load and New sandbox.",
-                "<b>Mouse and keys</b>: left mouse draws, right mouse or Tab switches A/B, wheel or [ ] sizes the brush, 1-9 picks an element, Space pauses, R replace, C clear, F5 save, F9 load.",
+                "<b>Mouse and keys</b>: left mouse draws, right mouse or Tab switches A/B, wheel or [ ] sizes the brush, 1-9 picks a Basic element, Space pauses, R replace, C clear, F5 save, F9 load.",
             });
 
         static readonly Dictionary<byte, string> Text = new Dictionary<byte, string>
